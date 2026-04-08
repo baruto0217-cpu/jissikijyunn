@@ -1,0 +1,2431 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="搬送先検索">
+<meta name="theme-color" content="#1A2535">
+<title>搬送先検索 | 愛知県R6基準</title>
+<link rel="manifest" href="data:application/manifest+json,{%22name%22:%22搬送先病院検索%22,%22short_name%22:%22搬送先検索%22,%22start_url%22:%22.%22,%22display%22:%22standalone%22,%22background_color%22:%22%231A2535%22,%22theme_color%22:%22%231A2535%22,%22icons%22:[{%22src%22:%22data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🚑%3C/text%3E%3C/svg%3E%22,%22sizes%22:%22any%22,%22type%22:%22image/svg+xml%22}]}">
+<script>
+// Service Worker をインラインBlobで登録
+if ('serviceWorker' in navigator) {
+  const swCode = `
+const CACHE = 'ems-hospital-v1';
+const URL = location.href;
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE).then(c => c.add(URL)).then(() => self.skipWaiting())
+  );
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
+self.addEventListener('fetch', e => {
+  e.respondWith(
+    fetch(e.request).then(res => {
+      const clone = res.clone();
+      caches.open(CACHE).then(c => c.put(e.request, clone));
+      return res;
+    }).catch(() => caches.match(e.request))
+  );
+});
+`;
+  const blob = new Blob([swCode], { type: 'application/javascript' });
+  const swUrl = URL.createObjectURL(blob);
+  navigator.serviceWorker.register(swUrl).catch(() => {});
+}
+</script>
+<style>
+:root {
+  --red: #C0392B;
+  --red-dark: #96281B;
+  --green: #27AE60;
+  --blue: #2471A3;
+  --navy: #1A2535;
+  --bg: #F2F4F7;
+  --card: #FFFFFF;
+  --text: #1A2535;
+  --text-mid: #4A5568;
+  --text-light: #8A9BB0;
+  --border: #DDE3EC;
+  --shadow: 0 1px 6px rgba(0,0,0,0.08);
+  --radius: 12px;
+  --radius-sm: 8px;
+  /* iPhone safe area */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html { font-size: 16px; }
+
+body {
+  font-family: -apple-system, 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  /* ボトムナビ分の余白 */
+  padding-bottom: calc(64px + var(--safe-bottom));
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ===== HEADER ===== */
+header {
+  background: var(--navy);
+  color: #fff;
+  padding: 12px 16px 10px;
+  padding-top: calc(12px + var(--safe-top));
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+.header-inner { display: flex; align-items: center; gap: 10px; }
+.header-icon { font-size: 20px; flex-shrink: 0; }
+.header-title { font-size: 15px; font-weight: 700; letter-spacing: 0.3px; line-height: 1.2; }
+.header-sub { font-size: 10px; color: rgba(255,255,255,0.55); margin-top: 1px; }
+.header-badge {
+  margin-left: auto;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ===== BOTTOM NAV (モード切替) ===== */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0; right: 0;
+  background: #fff;
+  border-top: 1px solid var(--border);
+  display: flex;
+  z-index: 200;
+  padding-bottom: var(--safe-bottom);
+  box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
+}
+.bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0 8px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  gap: 2px;
+  color: var(--text-light);
+  font-size: 10px;
+  font-weight: 600;
+  border: none;
+  background: none;
+  transition: color 0.15s;
+}
+.bottom-nav-item .nav-icon { font-size: 22px; }
+.bottom-nav-item.active { color: var(--navy); }
+.bottom-nav-item.active .nav-icon { filter: drop-shadow(0 0 0px #000); }
+.bottom-nav-item:active { opacity: 0.7; }
+
+/* ===== MAIN AREA ===== */
+main { padding: 12px 12px 0; }
+
+/* ===== SECTION CARD ===== */
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.card-header {
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  background: #FAFBFC;
+}
+.card-header-icon { font-size: 16px; }
+.card-header-title { font-size: 13px; font-weight: 700; }
+.card-header-sub { font-size: 10px; color: var(--text-light); margin-left: auto; }
+.card-body { padding: 12px 14px; }
+
+/* ===== DISEASE BUTTONS ===== */
+.disease-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+.disease-btn {
+  padding: 12px 10px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+  background: var(--card);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.12s;
+  -webkit-user-select: none;
+  /* 最小タップターゲット 44px */
+  min-height: 56px;
+}
+.disease-btn:active { transform: scale(0.96); background: #F5F7FA; }
+.disease-btn.selected {
+  border-color: var(--red);
+  background: #FEF0EE;
+}
+.disease-btn .d-icon { font-size: 24px; flex-shrink: 0; }
+.disease-btn .d-label { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.disease-btn.selected .d-label { color: var(--red); }
+.disease-btn .d-sub { font-size: 10px; color: var(--text-light); font-weight: 400; margin-top: 2px; }
+
+/* ===== FLOW STEPS ===== */
+.flow-step {
+  background: #F7F9FC;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.flow-step-q {
+  padding: 12px 14px 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.flow-step-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.4;
+  flex: 1;
+}
+/* 該当項目リスト */
+.flow-items {
+  background: #fff;
+  border-top: 1px solid var(--border);
+  padding: 10px 14px 10px 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.flow-item {
+  font-size: 12px;
+  color: var(--text-mid);
+  line-height: 1.5;
+  padding: 1px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+}
+.flow-item::before {
+  content: '•';
+  color: var(--blue);
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.flow-item-note {
+  font-size: 11px;
+  color: var(--text-light);
+  padding: 4px 0 2px;
+  font-style: italic;
+}
+.flow-item-cat {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--navy);
+  margin-top: 6px;
+  margin-bottom: 1px;
+}
+.flow-step-btns {
+  padding: 10px 12px 12px;
+  background: #F7F9FC;
+}
+.step-num {
+  width: 24px; height: 24px;
+  background: var(--navy);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ===== TOGGLE BTN ===== */
+.toggle-group { display: flex; flex-direction: column; gap: 7px; }
+.toggle-btn {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-mid);
+  text-align: left;
+  transition: all 0.12s;
+  -webkit-user-select: none;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+}
+.toggle-btn:active { transform: scale(0.985); }
+.toggle-btn.selected-yes {
+  border-color: var(--red);
+  background: var(--red);
+  color: #fff;
+  font-weight: 700;
+}
+.toggle-btn.selected-no {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ===== SYMPTOM CHECK ===== */
+.symptom-group { margin-bottom: 16px; }
+.symptom-group-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-mid);
+  margin-bottom: 8px;
+  padding: 6px 0 6px;
+  border-bottom: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.symptom-checks { display: flex; flex-direction: column; gap: 0; }
+.symptom-check {
+  padding: 13px 14px;
+  border-bottom: 1px solid #EEF1F5;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  transition: background 0.1s;
+  -webkit-user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+}
+.symptom-check:last-child { border-bottom: none; }
+.symptom-check::before {
+  content: '';
+  width: 20px; height: 20px;
+  border: 2px solid var(--border);
+  border-radius: 5px;
+  flex-shrink: 0;
+  transition: all 0.12s;
+}
+.symptom-check.checked {
+  background: #FEF8F7;
+  color: var(--red);
+}
+.symptom-check.checked::before {
+  background: var(--red);
+  border-color: var(--red);
+  content: '✓';
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.symptom-check:active { background: #F5F7FA; }
+
+/* ===== RESULT ===== */
+.result-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-light);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.list-header {
+  background: var(--navy);
+  color: #fff;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hospital-list {
+  border: 1.5px solid var(--navy);
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  overflow: hidden;
+}
+.hospital-item {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+.hospital-item:last-child { border-bottom: none; }
+.hospital-name { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.3; }
+.hospital-area { font-size: 11px; color: var(--text-light); margin-top: 2px; }
+.hospital-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.tag {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.tag-cpa    { background: #FDEDEC; color: #C0392B; }
+.tag-stroke { background: #EBF5FB; color: #2471A3; }
+.tag-mi     { background: #FEF9E7; color: #B7950B; }
+.tag-trauma { background: #EAFAF1; color: #1E8449; }
+.tag-burn   { background: #FDF2E9; color: #CA6F1E; }
+.tag-ob     { background: #F5EEF8; color: #7D3C98; }
+.tag-peds   { background: #EAF4FB; color: #1A5276; }
+.tag-abd    { background: #E8F8F5; color: #148F77; }
+.tag-digit  { background: #F2F3F4; color: #2C3E50; }
+.tag-psych  { background: #F4F6F7; color: #616A6B; }
+.tag-tele   { background: #9C27B0; color: #fff; }
+.tag-stroke-pct { background: #1565C0; color: #fff; }
+
+.alert-box {
+  background: #FEF0EE;
+  border-left: 4px solid var(--red);
+  padding: 11px 12px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--red);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.alert-box.blue { background: #EBF5FB; border-color: var(--blue); color: var(--blue); }
+.alert-box.green { background: #EAFAF1; border-color: var(--green); color: #1E8449; }
+
+/* ===== RESULT COUNT ===== */
+.result-count {
+  font-size: 12px;
+  color: var(--text-mid);
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+}
+.result-count strong { color: var(--red); font-size: 16px; }
+
+/* ===== BUTTONS ===== */
+.reset-btn {
+  width: 100%;
+  padding: 14px;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-mid);
+  cursor: pointer;
+  margin-top: 10px;
+  -webkit-user-select: none;
+  min-height: 48px;
+}
+.reset-btn:active { background: var(--border); }
+
+.search-btn {
+  width: 100%;
+  padding: 15px;
+  background: var(--red);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  margin-top: 8px;
+  letter-spacing: 0.5px;
+  -webkit-user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 52px;
+}
+.search-btn:active { background: var(--red-dark); }
+
+/* ===== EMPTY STATE ===== */
+.empty-state {
+  text-align: center;
+  padding: 32px 20px;
+  color: var(--text-light);
+}
+.empty-icon { font-size: 44px; margin-bottom: 8px; }
+.empty-text { font-size: 13px; }
+
+/* ===== CATEGORY TAB NAV ===== */
+.cat-tab-nav {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 12px 6px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  position: sticky;
+  top: 52px;
+  z-index: 90;
+  background: var(--bg);
+}
+.cat-tab-nav::-webkit-scrollbar { display: none; }
+.cat-tab {
+  flex-shrink: 0;
+  padding: 7px 11px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-mid);
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-user-select: none;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+}
+.cat-tab:active { opacity: 0.7; }
+.cat-tab.active { background: var(--navy); border-color: var(--navy); color: #fff; }
+.cat-tab.has-check { border-color: var(--red); color: var(--red); }
+.cat-tab.active.has-check { background: var(--red); border-color: var(--red); color: #fff; }
+
+/* ===== SELECTED SUMMARY TAGS ===== */
+.sel-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  background: #FEF0EE;
+  border: 1.5px solid var(--red);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--red);
+  cursor: pointer;
+  -webkit-user-select: none;
+}
+.sel-tag .sel-tag-x { font-size: 14px; font-weight: 700; opacity: 0.7; }
+.sel-tag:active { opacity: 0.7; }
+
+/* hidden / animate */
+/* ===== LIST MODE ===== */
+.list-tab-nav {
+  display: flex;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  background: var(--navy);
+  position: sticky;
+  top: 52px;
+  z-index: 90;
+  padding: 6px 8px 0;
+  gap: 4px;
+}
+.list-tab-nav::-webkit-scrollbar { display: none; }
+.list-tab {
+  flex-shrink: 0;
+  padding: 7px 10px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.55);
+  cursor: pointer;
+  -webkit-user-select: none;
+  border-radius: 8px 8px 0 0;
+  text-align: center;
+  line-height: 1.3;
+  min-width: 52px;
+  transition: background 0.15s, color 0.15s;
+}
+.list-tab span { font-size: 10px; font-weight: 400; display: block; }
+.list-tab.active { background: var(--bg); color: var(--navy); }
+.list-tab:active { opacity: 0.7; }
+
+.list-section-header {
+  padding: 10px 12px 8px;
+  background: #FAFBFC;
+  border-bottom: 1px solid var(--border);
+}
+.list-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.4;
+}
+.list-section-sub {
+  font-size: 11px;
+  color: var(--text-light);
+  margin-top: 3px;
+}
+.list-area-header {
+  background: var(--navy);
+  color: #fff;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.list-area-count {
+  margin-left: auto;
+  background: rgba(255,255,255,0.2);
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+}
+.list-hospital-item {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+.list-hospital-item:last-child { border-bottom: none; }
+.list-hospital-name { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.3; }
+.list-hospital-loc { font-size: 11px; color: var(--text-light); margin-top: 2px; }
+.list-hospital-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+.list-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.list-badge-tpa    { background: #1565C0; color: #fff; }
+.list-badge-pct    { background: #EBF5FB; color: #1565C0; }
+.list-badge-burn   { background: #FDF2E9; color: #CA6F1E; }
+.list-badge-ob     { background: #F5EEF8; color: #7D3C98; }
+.list-badge-obcomp { background: #7D3C98; color: #fff; }
+.list-badge-tele   { background: #9C27B0; color: #fff; }
+.list-note {
+  font-size: 11px;
+  color: var(--text-light);
+  padding: 6px 12px 8px;
+  background: #FFFDE7;
+  border-bottom: 1px solid #FFF176;
+  border-left: 3px solid #F9A825;
+}
+
+.hidden { display: none !important; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn 0.2s ease; }
+</style>
+</head>
+<body>
+
+<body>
+
+<header>
+  <div class="header-inner">
+    <span class="header-icon">🚑</span>
+    <div>
+      <div class="header-title">搬送先病院検索</div>
+      <div class="header-sub">愛知県 傷病者搬送・受入基準 令和6年3月版</div>
+    </div>
+    <div class="header-badge">尾張圏</div>
+  </div>
+</header>
+
+<main>
+
+
+<!-- ====== MODE: FLOW ====== -->
+<div id="mode-flow">
+
+  <!-- 疾患選択 -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-header-icon">①</span>
+      <span class="card-header-title">疾患・病態を選択</span>
+    </div>
+    <div class="card-body">
+      <div class="disease-grid" id="disease-grid">
+        <div class="disease-btn" onclick="selectDisease('stroke')" id="d-stroke">
+          <span class="d-icon">🧠</span>
+          <div><div class="d-label">脳卒中疑い</div><div class="d-sub">CPSS / ELVO</div></div>
+        </div>
+        <div class="disease-btn" onclick="selectDisease('mi')" id="d-mi">
+          <span class="d-icon">❤️</span>
+          <div><div class="d-label">心筋梗塞疑い</div><div class="d-sub">胸痛・絞扼感</div></div>
+        </div>
+        <div class="disease-btn" onclick="selectDisease('trauma')" id="d-trauma">
+          <span class="d-icon">🩹</span>
+          <div><div class="d-label">外傷・熱傷</div><div class="d-sub">高エネルギー等</div></div>
+        </div>
+        <div class="disease-btn" onclick="selectDisease('ob')" id="d-ob">
+          <span class="d-icon">🤰</span>
+          <div><div class="d-label">妊産婦</div><div class="d-sub">異常分娩・出血</div></div>
+        </div>
+        <div class="disease-btn" onclick="selectDisease('peds')" id="d-peds">
+          <span class="d-icon">👶</span>
+          <div><div class="d-label">小児</div><div class="d-sub">15歳未満</div></div>
+        </div>
+        <div class="disease-btn" onclick="selectDisease('abd')" id="d-abd">
+          <span class="d-icon">🫁</span>
+          <div><div class="d-label">急性腹症</div><div class="d-sub">消化管出血含む</div></div>
+        </div>
+        <div class="disease-btn" onclick="selectDisease('digit')" id="d-digit">
+          <span class="d-icon">✋</span>
+          <div><div class="d-label">手指切断</div><div class="d-sub">重度手指外傷</div></div>
+        </div>
+        <div class="disease-btn" onclick="selectDisease('psych')" id="d-psych">
+          <span class="d-icon">🧩</span>
+          <div><div class="d-label">精神疾患</div><div class="d-sub">身体合併症含む</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- フロー質問エリア -->
+  <div id="flow-questions" class="hidden">
+
+    <!-- 生理学的評価（共通） -->
+    <div class="card" id="q-vital">
+      <div class="card-header">
+        <span class="card-header-icon">②</span>
+        <span class="card-header-title">生理学的評価</span>
+        <span class="card-header-sub">重篤判定</span>
+      </div>
+      <div class="card-body">
+        <div class="alert-box" id="vital-alert" style="margin-bottom:10px">⚠️ いずれかに該当すれば → <strong>CPA等対応医療機関（リスト1）</strong></div>
+
+        <div class="flow-step">
+          <div class="flow-step-q">
+            <span class="step-num">!</span>
+            <div class="flow-step-title">心肺機能停止・気道確保困難</div>
+          </div>
+          <div class="flow-step-btns">
+            <div class="toggle-group">
+              <div class="toggle-btn" id="v-cpa-yes" onclick="setVital('cpa',true)">あり → リスト1</div>
+              <div class="toggle-btn" id="v-cpa-no" onclick="setVital('cpa',false)">なし → 次へ</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flow-step" id="v-detail-section" style="display:none">
+          <div class="flow-step-q">
+            <span class="step-num">!</span>
+            <div class="flow-step-title">以下のいずれかに該当しますか？</div>
+          </div>
+          <div class="flow-items">
+            <div class="flow-item">JCS III桁以上 / GCS 8以下</div>
+            <div class="flow-item">異常呼吸</div>
+            <div class="flow-item">著しい徐脈・頻脈・不整脈</div>
+            <div class="flow-item">著しい低血圧・高血圧</div>
+            <div class="flow-item">SpO₂ 90%未満</div>
+            <div class="flow-item">ショック症状</div>
+          </div>
+          <div class="flow-step-btns">
+            <div class="toggle-group">
+              <div class="toggle-btn" id="v-shock-yes" onclick="setVital('shock',true)">あり → リスト1</div>
+              <div class="toggle-btn" id="v-shock-no" onclick="setVital('shock',false)">なし → 症状評価へ</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ① 脳卒中フロー（PDF p.28） -->
+    <div id="flow-stroke" class="hidden">
+      <div class="card">
+        <div class="card-header"><span class="card-header-icon">③</span><span class="card-header-title">脳卒中特有症状</span><span class="card-header-sub">総合的に判断</span></div>
+        <div class="card-body">
+
+          <!-- (1) CPSS -->
+          <div class="flow-step">
+            <div class="flow-step-q">
+              <span class="step-num">A</span>
+              <div class="flow-step-title">CPSS（①〜③）のいずれかに該当しますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">① 顔のゆがみ（顔面神経麻痺）：歯を見せる・笑ってもらったとき、片方が下垂する</div>
+              <div class="flow-item">② 一側に限局した上肢麻痺：閉眼して10秒間上肢を上げさせたとき、一方の上肢が他方と比較して上がらない</div>
+              <div class="flow-item">③ 構音障害：言葉を正常にはっきり発音できない・呂律が回らない・不明瞭</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="s-cpss-yes" onclick="setStroke('cpss',true)">あり → ELVO確認へ</div>
+                <div class="toggle-btn" id="s-cpss-no" onclick="setStroke('cpss',false)">なし → ELVO確認へ</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- (2) ELVO screen（CPSS あり・なし 両方で確認） -->
+          <div class="flow-step" id="s-elvo-section" style="display:none">
+            <div class="flow-step-q">
+              <span class="step-num">B</span>
+              <div class="flow-step-title">ELVO screen（①〜③）のいずれかに該当しますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">① 眼異常（共同偏視）</div>
+              <div class="flow-item">② 失語：眼鏡や時計等を見せて「これは何か」と聞いたとき、物の名前が正確に回答できない</div>
+              <div class="flow-item">③ 半側空間無視：50cm離れて指4本を見せて何本か聞いたとき、指の数が正確に回答できない</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="s-elvo-yes" onclick="setStroke('elvo',true)">あり → 機械的血栓回収療法実施可能な医療機関への搬送を考慮</div>
+                <div class="toggle-btn" id="s-elvo-no" onclick="setStroke('elvo',false)">なし</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- (3) その他症状（CPSS あり・ELVOなし → 一次SC / CPSS なし・ELVOなし → その他確認） -->
+          <div class="flow-step" id="s-other-section" style="display:none">
+            <div class="flow-step-q">
+              <span class="step-num">C</span>
+              <div class="flow-step-title">その他の脳卒中症状のいずれかに該当しますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">頭痛・嘔気・嘔吐：突然発症した激しい頭痛、嘔気・嘔吐</div>
+              <div class="flow-item">眼異常（共同偏視以外）：瞳孔不同、眼球運動異常</div>
+              <div class="flow-item">痺れ・脱力：顔面、上下肢、一側に限局した痺れ・脱力</div>
+              <div class="flow-item">一側に限局した上肢以外の麻痺：上肢麻痺以外の下肢等その他部位の麻痺</div>
+              <div class="flow-item">失調：力があるのに立てない・歩けない、まっすぐ歩けない</div>
+              <div class="flow-item">心房細動：不整脈・心電図波形から評価</div>
+              <div class="flow-item-note">※上記の症状等を総合的に判断する</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="s-other-yes" onclick="setStroke('other',true)">あり → 脳卒中疑い（リスト2）</div>
+                <div class="toggle-btn" id="s-other-no" onclick="setStroke('other',false)">なし → 脳卒中疑いなし</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ② 心筋梗塞フロー（PDF p.29） -->
+    <div id="flow-mi" class="hidden">
+      <div class="card">
+        <div class="card-header"><span class="card-header-icon">③</span><span class="card-header-title">心筋梗塞特有項目</span><span class="card-header-sub">総合的に判断</span></div>
+        <div class="card-body">
+
+          <div class="flow-step">
+            <div class="flow-step-q">
+              <span class="step-num">A</span>
+              <div class="flow-step-title">以下のいずれかに該当しますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">重症感（冷や汗・顔面蒼白・末梢湿潤冷感・呼吸苦）</div>
+              <div class="flow-item">胸部痛（左前胸部・心窩部）</div>
+              <div class="flow-item">放散痛（左肩・左腕）</div>
+              <div class="flow-item">締め付けられるような痛み（絞扼感）</div>
+              <div class="flow-item">持続時間（15分以上）</div>
+              <div class="flow-item-note">※上記の症状等を総合的に判断する</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="mi-yes" onclick="setMI('result', true)">あり → 心筋梗塞疑い（リスト3）</div>
+                <div class="toggle-btn" id="mi-no"  onclick="setMI('result', false)">なし → 心筋梗塞疑いなし</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ③ 外傷・熱傷フロー（PDF p.30） -->
+    <div id="flow-trauma" class="hidden">
+      <div class="card">
+        <div class="card-header"><span class="card-header-icon">③</span><span class="card-header-title">外傷・熱傷の評価</span></div>
+        <div class="card-body">
+          <div class="alert-box blue" style="margin-bottom:10px">熱傷特有項目・外傷特有項目のいずれかに該当すれば → <strong>重症 → リスト4</strong></div>
+
+          <div class="flow-step">
+            <div class="flow-step-q">
+              <span class="step-num">A</span>
+              <div class="flow-step-title">熱傷特有項目のいずれかに該当しますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">急性CO中毒疑い（接触時に意識清明でない）</div>
+              <div class="flow-item">熱傷に高エネルギー外傷・Load＆Go外傷を合併</div>
+              <div class="flow-item">Ⅱ度熱傷 20%以上（小児・高齢者は10%以上）</div>
+              <div class="flow-item">Ⅲ度熱傷 10%以上（小児・高齢者は5%以上）</div>
+              <div class="flow-item">気道熱傷疑い（痰にすす・顔面熱傷・鼻毛焦げ・煙吸入）</div>
+              <div class="flow-item">化学熱傷（5%以上） ※眼球のみは眼科</div>
+              <div class="flow-item">電撃傷（通電の事実・火花による熱傷）</div>
+              <div class="flow-item-note">⚠️ 特に緊急性が高い熱傷は、気道・呼吸・循環の維持を優先し、直近の初期診療可能な医療機関への搬送を考慮</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="t-burn-yes" onclick="setTrauma('burn',true)">あり → 重症（リスト4）</div>
+                <div class="toggle-btn" id="t-burn-no" onclick="setTrauma('burn',false)">なし → 外傷評価へ</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-step" id="t-anat-section" style="display:none">
+            <div class="flow-step-q">
+              <span class="step-num">B</span>
+              <div class="flow-step-title">外傷特有項目（解剖学的評価）のいずれかに該当しますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">頭の高度な損傷</div>
+              <div class="flow-item">頸静脈怒張</div>
+              <div class="flow-item">顔面の高度な損傷・気道熱傷</div>
+              <div class="flow-item">胸壁動揺・奇異運動</div>
+              <div class="flow-item">胸部開放創・空気の出入り</div>
+              <div class="flow-item">呼吸音の左右差・気管偏位・頸部胸部の皮下気腫</div>
+              <div class="flow-item">腹部膨隆・圧痛・腹壁緊張</div>
+              <div class="flow-item">骨盤動揺・圧痛・下肢長差</div>
+              <div class="flow-item">大腿の変形・腫脹・動揺・圧痛</div>
+              <div class="flow-item">四肢の麻痺</div>
+              <div class="flow-item">頭頸部・胸腹部・背面・鼠径部の穿通創、上肢・下肢切断</div>
+              <div class="flow-item-note">※高エネルギー受傷機転・糖尿病・肝腎疾患・循環疾患等の既往を考慮して総合的に判断</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="t-anat-yes" onclick="setTrauma('anat',true)">あり → 重症（リスト4）</div>
+                <div class="toggle-btn" id="t-anat-no" onclick="setTrauma('anat',false)">なし → 中等症以下</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ④ 妊産婦フロー（PDF p.31） -->
+    <div id="flow-ob" class="hidden">
+      <div class="card">
+        <div class="card-header"><span class="card-header-icon">③</span><span class="card-header-title">妊産婦特有症状の確認</span></div>
+        <div class="card-body">
+
+          <div class="flow-step">
+            <div class="flow-step-q">
+              <span class="step-num">A</span>
+              <div class="flow-step-title">妊産婦特有症状のいずれかに該当しますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">性器出血（大出血）</div>
+              <div class="flow-item">痙攣（重積発作）</div>
+              <div class="flow-item">腹部痛（持続的・周期的）</div>
+              <div class="flow-item">異常分娩（早産・破水・骨盤位・自宅分娩）</div>
+              <div class="flow-item">呼吸困難・チアノーゼ</div>
+              <div class="flow-item">子癇前駆症状（頭痛・眼のちらつき）</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="o-sym-yes" onclick="setOB('sym',true)">あり → 重症</div>
+                <div class="toggle-btn" id="o-sym-no" onclick="setOB('sym',false)">なし → 中等症以下</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-step" id="o-comp-section" style="display:none">
+            <div class="flow-step-q">
+              <span class="step-num">B</span>
+              <div class="flow-step-title">合併症がありますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">脳卒中・心筋梗塞・外傷・熱傷の合併</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="o-comp-yes" onclick="setOB('comp',true)">あり → リスト6</div>
+                <div class="toggle-btn" id="o-comp-no" onclick="setOB('comp',false)">なし → リスト5</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑤ 小児フロー（PDF p.32） -->
+    <div id="flow-peds" class="hidden">
+      <div class="card">
+        <div class="card-header"><span class="card-header-icon">③</span><span class="card-header-title">小児特有項目（PAT）</span><span class="card-header-sub">産科退院後〜15歳未満</span></div>
+        <div class="card-body">
+          <div class="alert-box blue" style="margin-bottom:10px">バイタル測定が困難な場合は、特有項目を優先して観察・判断する</div>
+
+          <div class="flow-step">
+            <div class="flow-step-q">
+              <span class="step-num">A</span>
+              <div class="flow-step-title">外傷・熱傷特有項目に該当しますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item-note">※該当する場合は外傷・熱傷の観察基準（リスト4）を適用する</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="p-trauma-yes" onclick="setPeds('trauma',true)">あり → 外傷・熱傷リスト4</div>
+                <div class="toggle-btn" id="p-trauma-no" onclick="setPeds('trauma',false)">なし → 小児特有項目へ</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-step" id="p-pat-section" style="display:none">
+            <div class="flow-step-q">
+              <span class="step-num">B</span>
+              <div class="flow-step-title">小児特有項目のいずれかに該当しますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item-cat">【外観（Appearance）】</div>
+              <div class="flow-item">緊張感：動かない・抵抗しない・だらっとしている・つっぱりが強い</div>
+              <div class="flow-item">周囲への反応：音や物に年齢相応の反応を示さない・おもちゃで遊ぼうとしない</div>
+              <div class="flow-item">精神的安定：過度に興奮・不安を訴える・泣き止まない</div>
+              <div class="flow-item">視線・注視：視線が合わない・ぼんやりしている</div>
+              <div class="flow-item">会話・啼泣：年齢相応の会話ができない・泣かない</div>
+              <div class="flow-item-cat">【呼吸（Breathing）】</div>
+              <div class="flow-item">呼吸音：喘鳴（吸気性・呼気性）・くぐもった声・呻吟</div>
+              <div class="flow-item">呼吸仕事量の増加：陥没呼吸（鎖骨上窩・肋間・胸骨・季肋部）・鼻翼呼吸</div>
+              <div class="flow-item">体位：寝転ぼうとしない・呼吸と同時に首を振る（新生児・乳児）</div>
+              <div class="flow-item-cat">【循環（Circulation）】</div>
+              <div class="flow-item">末梢冷感</div>
+              <div class="flow-item">皮膚色：蒼白・チアノーゼ・まだら模様</div>
+              <div class="flow-item">皮疹：急激に発症した紅斑・紫斑</div>
+              <div class="flow-item">出血</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="p-pat-yes" onclick="setPeds('pat',true)">あり → 重症（リスト7）</div>
+                <div class="toggle-btn" id="p-pat-no" onclick="setPeds('pat',false)">なし → 中等症以下</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑥ 急性腹症フロー（PDF p.33） -->
+    <div id="flow-abd" class="hidden">
+      <div class="card">
+        <div class="card-header"><span class="card-header-icon">③</span><span class="card-header-title">急性腹症・消化管出血特有項目</span></div>
+        <div class="card-body">
+
+          <div class="flow-step">
+            <div class="flow-step-q">
+              <span class="step-num">A</span>
+              <div class="flow-step-title">以下のいずれかに該当しますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">突然発症した激しい腹痛</div>
+              <div class="flow-item">腹部症状を伴う嘔気・嘔吐</div>
+              <div class="flow-item">腹部圧痛・板状硬・反跳痛・鼠径部膨隆</div>
+              <div class="flow-item">著明な腹部膨隆・膨満</div>
+              <div class="flow-item">吐血・下血</div>
+              <div class="flow-item">出血傾向（肝硬変の既往・抗凝固薬内服）</div>
+              <div class="flow-item">高度貧血・眼瞼結膜貧血様</div>
+              <div class="flow-item-note">※高齢者・糖尿病患者は症状が軽微な場合あり</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="abd-yes" onclick="setAbd(true)">あり → 急性腹症疑い</div>
+                <div class="toggle-btn" id="abd-no" onclick="setAbd(false)">なし → 急性腹症疑いなし</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑦ 手指切断フロー（PDF p.34） -->
+    <div id="flow-digit" class="hidden">
+      <div class="card">
+        <div class="card-header"><span class="card-header-icon">③</span><span class="card-header-title">手指切断の評価</span></div>
+        <div class="card-body">
+
+          <div class="flow-step">
+            <div class="flow-step-q">
+              <span class="step-num">A</span>
+              <div class="flow-step-title">外傷特有項目に該当、または出血コントロールが困難ですか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">外傷特有項目（解剖学的評価）に該当する</div>
+              <div class="flow-item">受傷肢からの出血コントロールが困難</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="dig-trauma-yes" onclick="setDigit('trauma',true)">あり → 外傷リスト4</div>
+                <div class="toggle-btn" id="dig-trauma-no" onclick="setDigit('trauma',false)">なし → 手指評価へ</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-step" id="dig-level-section" style="display:none">
+            <div class="flow-step-q">
+              <span class="step-num">B</span>
+              <div class="flow-step-title">以下のいずれかに該当しますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">完全切断（PIPより近位・母指・多数指）</div>
+              <div class="flow-item">完全切断ではないが血行不良（PIPより近位・母指・多数指）</div>
+              <div class="flow-item">小児の切断（足趾含む）および再接着希望の強い傷病者</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="dig-prox-yes" onclick="setDigit('prox',true)">あり → リスト9（手指切断対応）</div>
+                <div class="toggle-btn" id="dig-prox-no" onclick="setDigit('prox',false)">なし → 受傷機転を確認</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-step" id="dig-mech-section" style="display:none">
+            <div class="flow-step-q">
+              <span class="step-num">C</span>
+              <div class="flow-step-title">受傷機転は以下のいずれかですか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">機械・器具に巻き込まれた</div>
+              <div class="flow-item">プレス機・鉄板などに長時間挟まれた</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="dig-mech-yes" onclick="setDigit('mech',true)">あり → Interactive Teletriage</div>
+                <div class="toggle-btn" id="dig-mech-no" onclick="setDigit('mech',false)">なし</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-step" id="dig-dist-section" style="display:none">
+            <div class="flow-step-q">
+              <span class="step-num">D</span>
+              <div class="flow-step-title">以下のいずれかに該当しますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">完全切断（PIPより遠位）</div>
+              <div class="flow-item">完全切断ではないが血行不良（PIPより遠位）</div>
+              <div class="flow-item">完全切断ではないが血行評価困難</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="dig-dist-yes" onclick="setDigit('dist',true)">あり → Interactive Teletriage</div>
+                <div class="toggle-btn" id="dig-dist-no" onclick="setDigit('dist',false)">なし → 各消防本部対応</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑧ 精神疾患フロー（PDF p.35-36） -->
+    <div id="flow-psych" class="hidden">
+      <div class="card">
+        <div class="card-header"><span class="card-header-icon">③</span><span class="card-header-title">精神疾患の評価</span></div>
+        <div class="card-body">
+
+          <!-- STEP A: 各分類観察基準に該当する身体症状 -->
+          <div class="flow-step">
+            <div class="flow-step-q">
+              <span class="step-num">A</span>
+              <div class="flow-step-title">各分類の観察基準に該当する身体症状がありますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item">脳卒中・心筋梗塞・外傷・熱傷・妊産婦・小児・急性腹症・手指切断の各観察基準に該当する</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="p-body-yes" onclick="setPsych('body',true)">あり → 各分類対応医療機関リスト</div>
+                <div class="toggle-btn" id="p-body-no" onclick="setPsych('body',false)">なし</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- STEP B: 精神症状を伴う身体疾患・その他 -->
+          <div class="flow-step" id="p-symptom-section" style="display:none">
+            <div class="flow-step-q">
+              <span class="step-num">B</span>
+              <div class="flow-step-title">以下のいずれかに該当しますか？</div>
+            </div>
+            <div class="flow-items">
+              <div class="flow-item-cat">【精神症状を伴う身体疾患】</div>
+              <div class="flow-item">初発の精神症状</div>
+              <div class="flow-item">体温37度以上・発汗</div>
+              <div class="flow-item">頻呼吸（40歳以上の場合）</div>
+              <div class="flow-item">失語</div>
+              <div class="flow-item">けいれん</div>
+              <div class="flow-item">脳炎・水中毒疑い</div>
+              <div class="flow-item-cat">【その他】</div>
+              <div class="flow-item">急性アルコール中毒</div>
+              <div class="flow-item">薬物の過剰摂取（違法薬物含む）</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="p-symptom-yes" onclick="setPsych('symptom',true)">あり → 救急告示医療機関</div>
+                <div class="toggle-btn" id="p-symptom-no" onclick="setPsych('symptom',false)">なし</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- STEP C: 自傷・他害の恐れ -->
+          <div class="flow-step" id="p-danger-section" style="display:none">
+            <div class="flow-step-q">
+              <span class="step-num">C</span>
+              <div class="flow-step-title">自傷・他害の恐れがありますか？</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="p-danger-yes" onclick="setPsych('danger',true)">あり → 精神保健福祉法に基づく通報</div>
+                <div class="toggle-btn" id="p-danger-no" onclick="setPsych('danger',false)">なし</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- STEP D: 身体症状の有無 -->
+          <div class="flow-step" id="p-physical-section" style="display:none">
+            <div class="flow-step-q">
+              <span class="step-num">D</span>
+              <div class="flow-step-title">身体症状がありますか？</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="p-physical-yes" onclick="setPsych('physical',true)">あり → リスト10（精神・身体合併症）</div>
+                <div class="toggle-btn" id="p-physical-no" onclick="setPsych('physical',false)">なし</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- STEP E: 措置診察の要否 -->
+          <div class="flow-step" id="p-measure-section" style="display:none">
+            <div class="flow-step-q">
+              <span class="step-num">E</span>
+              <div class="flow-step-title">措置診察が必要ですか？</div>
+            </div>
+            <div class="flow-step-btns">
+              <div class="toggle-group">
+                <div class="toggle-btn" id="p-measure-yes" onclick="setPsych('measure',true)">要 → 措置入院</div>
+                <div class="toggle-btn" id="p-measure-no" onclick="setPsych('measure',false)">否 → ①精神科かかりつけ・②当番病院・③その他精神科病院</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /flow-questions -->
+
+  <!-- 結果エリア（フロー） -->
+  <div id="flow-result" class="hidden"></div>
+
+</div><!-- /mode-flow -->
+
+<!-- ====== MODE: LIST ====== -->
+<div id="mode-list" class="hidden">
+
+  <!-- リスト選択タブ -->
+  <div class="list-tab-nav" id="list-tab-nav">
+    <div class="list-tab active" data-list="1"  onclick="selectList(1,this)">リスト1<br><span>CPA等</span></div>
+    <div class="list-tab" data-list="2"  onclick="selectList(2,this)">リスト2<br><span>脳卒中</span></div>
+    <div class="list-tab" data-list="3"  onclick="selectList(3,this)">リスト3<br><span>心筋梗塞</span></div>
+    <div class="list-tab" data-list="4"  onclick="selectList(4,this)">リスト4<br><span>外傷・熱傷</span></div>
+    <div class="list-tab" data-list="5"  onclick="selectList(5,this)">リスト5<br><span>妊産婦</span></div>
+    <div class="list-tab" data-list="6"  onclick="selectList(6,this)">リスト6<br><span>合併症妊産婦</span></div>
+    <div class="list-tab" data-list="7"  onclick="selectList(7,this)">リスト7<br><span>小児</span></div>
+    <div class="list-tab" data-list="8"  onclick="selectList(8,this)">リスト8<br><span>急性腹症</span></div>
+    <div class="list-tab" data-list="9"  onclick="selectList(9,this)">リスト9<br><span>手指切断</span></div>
+    <div class="list-tab" data-list="10" onclick="selectList(10,this)">リスト10<br><span>精神</span></div>
+    <div class="list-tab" data-list="11" onclick="selectList(11,this)">確保基準<br><span>対象医療機関</span></div>
+  </div>
+
+  <!-- リスト表示エリア -->
+  <div id="list-content"></div>
+
+</div>
+<div id="mode-check" class="hidden">
+
+  <!-- 選択済み所見サマリー -->
+  <div class="card" id="selected-summary" style="display:none">
+    <div class="card-header" style="background:#1A2535;color:#fff;">
+      <span class="card-header-icon">✅</span>
+      <span class="card-header-title" style="color:#fff">選択中の所見</span>
+      <span id="selected-count-badge" style="margin-left:auto;background:#C0392B;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">0件</span>
+    </div>
+    <div class="card-body" style="padding:10px 14px;">
+      <div id="selected-tags-area" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+    </div>
+  </div>
+
+  <!-- カテゴリタブナビ -->
+  <div class="cat-tab-nav" id="cat-tab-nav">
+    <div class="cat-tab active" data-target="sg-vital" onclick="scrollToGroup('sg-vital',this)">⚠️ 重篤</div>
+    <div class="cat-tab" data-target="sg-stroke" onclick="scrollToGroup('sg-stroke',this)">🧠 脳卒中</div>
+    <div class="cat-tab" data-target="sg-mi" onclick="scrollToGroup('sg-mi',this)">❤️ 心梗</div>
+    <div class="cat-tab" data-target="sg-trauma" onclick="scrollToGroup('sg-trauma',this)">🩹 外傷</div>
+    <div class="cat-tab" data-target="sg-burn" onclick="scrollToGroup('sg-burn',this)">🔥 熱傷</div>
+    <div class="cat-tab" data-target="sg-ob" onclick="scrollToGroup('sg-ob',this)">🤰 妊産婦</div>
+    <div class="cat-tab" data-target="sg-peds" onclick="scrollToGroup('sg-peds',this)">👶 小児</div>
+    <div class="cat-tab" data-target="sg-abd" onclick="scrollToGroup('sg-abd',this)">🫁 腹症</div>
+    <div class="cat-tab" data-target="sg-digit" onclick="scrollToGroup('sg-digit',this)">✋ 手指</div>
+    <div class="cat-tab" data-target="sg-psych" onclick="scrollToGroup('sg-psych',this)">🧩 精神</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-header-icon">☑️</span>
+      <span class="card-header-title">観察した所見を選択</span>
+      <span class="card-header-sub">複数選択可</span>
+    </div>
+    <div class="card-body">
+
+      <!-- 共通：生理学的評価 -->
+      <div class="symptom-group" id="sg-vital">
+        <div class="symptom-group-title">⚠️ 生理学的評価（共通・重篤判定）</div>
+        <div class="symptom-checks">
+          <div class="symptom-check" data-cats="cpa" onclick="toggleCheck(this)">心肺機能停止</div>
+          <div class="symptom-check" data-cats="cpa" onclick="toggleCheck(this)">気道確保困難</div>
+          <div class="symptom-check" data-cats="cpa" onclick="toggleCheck(this)">JCS III桁以上 / GCS 8以下</div>
+          <div class="symptom-check" data-cats="cpa" onclick="toggleCheck(this)">異常呼吸</div>
+          <div class="symptom-check" data-cats="cpa" onclick="toggleCheck(this)">著しい徐脈・頻脈・不整脈</div>
+          <div class="symptom-check" data-cats="cpa" onclick="toggleCheck(this)">著しい低血圧・高血圧</div>
+          <div class="symptom-check" data-cats="cpa" onclick="toggleCheck(this)">SpO₂ 90%未満</div>
+          <div class="symptom-check" data-cats="cpa" onclick="toggleCheck(this)">ショック症状</div>
+        </div>
+      </div>
+
+      <!-- 脳卒中 -->
+      <div class="symptom-group" id="sg-stroke">
+        <div class="symptom-group-title">🧠 脳卒中疑い</div>
+        <div class="symptom-checks">
+          <div class="symptom-check" data-cats="stroke" onclick="toggleCheck(this)">顔の歪み・片側下垂（CPSS）</div>
+          <div class="symptom-check" data-cats="stroke" onclick="toggleCheck(this)">一側上肢麻痺（CPSS）</div>
+          <div class="symptom-check" data-cats="stroke" onclick="toggleCheck(this)">構音障害・呂律が回らない（CPSS）</div>
+          <div class="symptom-check" data-cats="stroke" onclick="toggleCheck(this)">共同偏視（ELVO）</div>
+          <div class="symptom-check" data-cats="stroke" onclick="toggleCheck(this)">失語・物の名前が言えない（ELVO）</div>
+          <div class="symptom-check" data-cats="stroke" onclick="toggleCheck(this)">半側空間無視（ELVO）</div>
+          <div class="symptom-check" data-cats="stroke" onclick="toggleCheck(this)">突然発症した激しい頭痛・嘔気嘔吐</div>
+          <div class="symptom-check" data-cats="stroke" onclick="toggleCheck(this)">瞳孔不同・眼球運動異常</div>
+          <div class="symptom-check" data-cats="stroke" onclick="toggleCheck(this)">顔面・上下肢の一側に限局した痺れ・脱力</div>
+          <div class="symptom-check" data-cats="stroke" onclick="toggleCheck(this)">上肢以外の麻痺（下肢等）</div>
+          <div class="symptom-check" data-cats="stroke" onclick="toggleCheck(this)">失調（力があるのに立てない・まっすぐ歩けない）</div>
+          <div class="symptom-check" data-cats="stroke" onclick="toggleCheck(this)">心房細動（不整脈・心電図波形）</div>
+        </div>
+      </div>
+
+      <!-- 心筋梗塞 -->
+      <div class="symptom-group" id="sg-mi">
+        <div class="symptom-group-title">❤️ 心筋梗塞疑い</div>
+        <div class="symptom-checks">
+          <div class="symptom-check" data-cats="mi" onclick="toggleCheck(this)">胸部痛（左前胸部・心窩部）</div>
+          <div class="symptom-check" data-cats="mi" onclick="toggleCheck(this)">絞扼感・締め付けられるような痛み</div>
+          <div class="symptom-check" data-cats="mi" onclick="toggleCheck(this)">放散痛（左肩・左腕）</div>
+          <div class="symptom-check" data-cats="mi" onclick="toggleCheck(this)">痛みが15分以上持続</div>
+          <div class="symptom-check" data-cats="mi" onclick="toggleCheck(this)">冷や汗・顔面蒼白</div>
+          <div class="symptom-check" data-cats="mi" onclick="toggleCheck(this)">末梢湿潤冷感・呼吸苦（重症感）</div>
+        </div>
+      </div>
+
+      <!-- 外傷 -->
+      <div class="symptom-group" id="sg-trauma">
+        <div class="symptom-group-title">🩹 外傷（解剖学的評価）</div>
+        <div class="symptom-checks">
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">高エネルギー受傷機転（交通事故・転落等）</div>
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">頭の高度な損傷</div>
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">顔面の高度な損傷</div>
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">頸静脈怒張</div>
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">胸部開放創・空気の出入り</div>
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">胸壁動揺・奇異運動</div>
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">呼吸音の左右差・気管偏位</div>
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">頸部・胸部の皮下気腫</div>
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">腹部膨隆・圧痛・腹壁緊張</div>
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">骨盤動揺・圧痛・下肢長差</div>
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">大腿の変形・腫脹・動揺・圧痛</div>
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">四肢の麻痺</div>
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">頭頸部・胸腹部・背面・鼠径部の穿通創</div>
+          <div class="symptom-check" data-cats="trauma" onclick="toggleCheck(this)">上肢・下肢の切断</div>
+        </div>
+      </div>
+
+      <!-- 熱傷 -->
+      <div class="symptom-group" id="sg-burn">
+        <div class="symptom-group-title">🔥 熱傷</div>
+        <div class="symptom-checks">
+          <div class="symptom-check" data-cats="burn" onclick="toggleCheck(this)">Ⅱ度熱傷20%以上（小児・高齢者は10%以上）</div>
+          <div class="symptom-check" data-cats="burn" onclick="toggleCheck(this)">Ⅲ度熱傷10%以上（小児・高齢者は5%以上）</div>
+          <div class="symptom-check" data-cats="burn" onclick="toggleCheck(this)">気道熱傷疑い（痰にすす・顔面熱傷・鼻毛焦げ・煙吸入）</div>
+          <div class="symptom-check" data-cats="burn" onclick="toggleCheck(this)">化学熱傷（5%以上）</div>
+          <div class="symptom-check" data-cats="burn" onclick="toggleCheck(this)">電撃傷（通電の事実・火花による熱傷）</div>
+          <div class="symptom-check" data-cats="burn,trauma" onclick="toggleCheck(this)">熱傷＋高エネルギー外傷合併</div>
+          <div class="symptom-check" data-cats="burn" onclick="toggleCheck(this)">急性一酸化炭素中毒疑い（接触時に意識清明でない）</div>
+        </div>
+      </div>
+
+      <!-- 妊産婦 -->
+      <div class="symptom-group" id="sg-ob">
+        <div class="symptom-group-title">🤰 妊産婦</div>
+        <div class="symptom-checks">
+          <div class="symptom-check" data-cats="ob" onclick="toggleCheck(this)">性器出血・大出血</div>
+          <div class="symptom-check" data-cats="ob" onclick="toggleCheck(this)">痙攣・重積発作</div>
+          <div class="symptom-check" data-cats="ob" onclick="toggleCheck(this)">腹部痛（持続的・周期的）</div>
+          <div class="symptom-check" data-cats="ob" onclick="toggleCheck(this)">早産・破水・骨盤位分娩</div>
+          <div class="symptom-check" data-cats="ob" onclick="toggleCheck(this)">自宅分娩</div>
+          <div class="symptom-check" data-cats="ob" onclick="toggleCheck(this)">呼吸困難・チアノーゼ</div>
+          <div class="symptom-check" data-cats="ob" onclick="toggleCheck(this)">子癇前駆症状（頭痛・眼のちらつき）</div>
+          <div class="symptom-check" data-cats="ob-comp" onclick="toggleCheck(this)">合併症あり（脳卒中・心筋梗塞・外傷・熱傷）</div>
+        </div>
+      </div>
+
+      <!-- 小児 -->
+      <div class="symptom-group" id="sg-peds">
+        <div class="symptom-group-title">👶 小児（産科退院後〜15歳未満）</div>
+        <div class="symptom-checks">
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">外観：緊張・ぐったり・だらっとしている</div>
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">外観：つっぱりが強い</div>
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">周囲への反応なし・おもちゃで遊ぼうとしない</div>
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">過度の興奮・泣き止まない</div>
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">視線が合わない・ぼんやりしている</div>
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">年齢相応の会話ができない・泣かない</div>
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">喘鳴（吸気性・呼気性）・くぐもった声・呻吟</div>
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">陥没呼吸（鎖骨上窩・肋間・胸骨・季肋部）・鼻翼呼吸</div>
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">呼吸と同時に首を振る（新生児・乳児）</div>
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">末梢冷感</div>
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">皮膚蒼白・チアノーゼ・まだら模様</div>
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">急激に発症した紅斑・紫斑</div>
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">出血</div>
+          <div class="symptom-check" data-cats="peds" onclick="toggleCheck(this)">救急隊現着時に継続するけいれん</div>
+        </div>
+      </div>
+
+      <!-- 急性腹症 -->
+      <div class="symptom-group" id="sg-abd">
+        <div class="symptom-group-title">🫁 急性腹症・消化管出血</div>
+        <div class="symptom-checks">
+          <div class="symptom-check" data-cats="abd" onclick="toggleCheck(this)">突然発症した激しい腹痛</div>
+          <div class="symptom-check" data-cats="abd" onclick="toggleCheck(this)">腹痛等の腹部症状を伴う嘔気・嘔吐</div>
+          <div class="symptom-check" data-cats="abd" onclick="toggleCheck(this)">腹部圧痛・板状硬・反跳痛</div>
+          <div class="symptom-check" data-cats="abd" onclick="toggleCheck(this)">鼠径部膨隆</div>
+          <div class="symptom-check" data-cats="abd" onclick="toggleCheck(this)">著明な腹部膨隆・膨満</div>
+          <div class="symptom-check" data-cats="abd" onclick="toggleCheck(this)">吐血・下血</div>
+          <div class="symptom-check" data-cats="abd" onclick="toggleCheck(this)">肝硬変の既往歴</div>
+          <div class="symptom-check" data-cats="abd" onclick="toggleCheck(this)">抗凝固薬・抗血栓薬の内服歴（出血傾向あり）</div>
+          <div class="symptom-check" data-cats="abd" onclick="toggleCheck(this)">高度貧血・眼瞼結膜貧血様</div>
+        </div>
+      </div>
+
+      <!-- 手指切断 -->
+      <div class="symptom-group" id="sg-digit">
+        <div class="symptom-group-title">✋ 手指切断・重度手指外傷</div>
+        <div class="symptom-checks">
+          <div class="symptom-check" data-cats="digit" onclick="toggleCheck(this)">完全切断（PIPより近位）</div>
+          <div class="symptom-check" data-cats="digit" onclick="toggleCheck(this)">完全切断（母指）</div>
+          <div class="symptom-check" data-cats="digit" onclick="toggleCheck(this)">完全切断（多数指）</div>
+          <div class="symptom-check" data-cats="digit" onclick="toggleCheck(this)">完全切断ではないが血行不良（PIPより近位）</div>
+          <div class="symptom-check" data-cats="digit" onclick="toggleCheck(this)">血行評価困難</div>
+          <div class="symptom-check" data-cats="digit" onclick="toggleCheck(this)">小児の切断（足趾含む）</div>
+          <div class="symptom-check" data-cats="digit" onclick="toggleCheck(this)">再接着を強く希望</div>
+          <div class="symptom-check" data-cats="digit" onclick="toggleCheck(this)">機械・器具への巻き込み</div>
+          <div class="symptom-check" data-cats="digit" onclick="toggleCheck(this)">プレス機・鉄板等に長時間挟まれた</div>
+          <div class="symptom-check" data-cats="digit" onclick="toggleCheck(this)">完全切断（PIPより遠位）</div>
+          <div class="symptom-check" data-cats="digit" onclick="toggleCheck(this)">完全切断ではないが血行不良（PIPより遠位）</div>
+        </div>
+      </div>
+
+      <!-- 精神疾患 -->
+      <div class="symptom-group" id="sg-psych">
+        <div class="symptom-group-title">🧩 精神疾患・身体合併症</div>
+        <div class="symptom-checks">
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">初発の精神症状</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">薬物の過剰摂取（違法薬物含む）</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">自傷・他害の恐れ</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">精神保健福祉法に基づく通報</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">急性アルコール中毒</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">意識障害（意識混濁・せん妄・もうろう状態）</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">幻聴・幻視</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">記銘障害（数分前の記憶がない）</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">見当識障害（日時・場所が分からない）</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">体温37度以上＋発汗（脳炎疑い）</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">頻呼吸（40歳以上・脳炎疑い）</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">失語・けいれん（脳炎疑い）</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">多量飲水・ビールのみ摂取＋意識障害（水中毒疑い）</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">四肢筋肉の硬直・舌突出・眼球上転（急性ジストニー）</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">常に歩き回る・足をゆする（アカシジア）</div>
+          <div class="symptom-check" data-cats="psych" onclick="toggleCheck(this)">精神症状＋身体合併症あり</div>
+        </div>
+      </div>
+
+      <button class="search-btn" onclick="runCheckSearch()">🔍 病院を検索する</button>
+      <button class="reset-btn" onclick="resetCheck()">↺ リセット</button>
+    </div>
+  </div>
+
+  <!-- 症状チェック 結果 -->
+  <div id="check-result" class="hidden fade-in"></div>
+</div>
+
+</main>
+
+<!-- ===== BOTTOM NAV ===== -->
+<nav class="bottom-nav">
+  <button class="bottom-nav-item active" id="tab-flow" onclick="switchMode('flow')">
+    <span class="nav-icon">📋</span>
+    <span>観察フロー</span>
+  </button>
+  <button class="bottom-nav-item" id="tab-check" onclick="switchMode('check')">
+    <span class="nav-icon">☑️</span>
+    <span>症状チェック</span>
+  </button>
+  <button class="bottom-nav-item" id="tab-list" onclick="switchMode('list')">
+    <span class="nav-icon">🏥</span>
+    <span>医療機関リスト</span>
+  </button>
+</nav>
+
+<script>
+// ============================
+// DATA: 病院データ（尾張・名古屋圏）
+// ============================
+const HOSPITALS = [
+  // === 名古屋・尾張中部 ===
+  { name:"愛知県精神医療センター", area:"名古屋・尾張中部", loc:"名古屋市千種区",
+    cpa:false, stroke:false, stroke_pct:false, stroke_tpa:false, mi:false, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:false, digit:false, psych:false, kakuho:false, kakuho_psych:true },
+  { name:"東部医療センター", area:"名古屋・尾張中部", loc:"名古屋市千種区",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:false, ob_comp:false, peds:true, abd:true, digit:true, psych:false, kakuho:true },
+  { name:"名古屋ハートセンター", area:"名古屋・尾張中部", loc:"名古屋市東区",
+    cpa:true, stroke:false, stroke_pct:false, stroke_tpa:false, mi:true, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:false, digit:false, psych:false, kakuho:false },
+  { name:"名鉄病院", area:"名古屋・尾張中部", loc:"名古屋市西区",
+    cpa:true, stroke:true, stroke_pct:false, stroke_tpa:false, mi:true, trauma:false, burn:false, ob:false, ob_comp:false, peds:true, abd:true, digit:false, psych:false, kakuho:false },
+  { name:"名古屋第一赤十字病院", area:"名古屋・尾張中部", loc:"名古屋市中村区",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:true, ob_comp:true, peds:true, abd:true, digit:true, psych:false, kakuho:true, ob_center:"◎総合周産期" },
+  { name:"名古屋セントラル病院", area:"名古屋・尾張中部", loc:"名古屋市中村区",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:false, mi:true, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:false, kakuho:false },
+  { name:"名古屋医療センター", area:"名古屋・尾張中部", loc:"名古屋市中区",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:true, ob_comp:true, peds:true, abd:true, digit:true, psych:true, kakuho:true },
+  { name:"名城病院", area:"名古屋・尾張中部", loc:"名古屋市中区",
+    cpa:true, stroke:true, stroke_pct:false, stroke_tpa:false, mi:true, trauma:false, burn:false, ob:false, ob_comp:true, peds:true, abd:true, digit:false, psych:false, kakuho:false },
+  { name:"名古屋大学医学部附属病院", area:"名古屋・尾張中部", loc:"名古屋市昭和区",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:true, ob_comp:true, peds:true, abd:true, digit:true, psych:true, kakuho:false, ob_center:"◎総合周産期", tele:true },
+  { name:"名古屋第二赤十字病院", area:"名古屋・尾張中部", loc:"名古屋市昭和区",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:true, ob_comp:true, peds:true, abd:true, digit:true, psych:true, kakuho:true, ob_center:"◎総合周産期" },
+  { name:"名古屋市立大学病院", area:"名古屋・尾張中部", loc:"名古屋市瑞穂区",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:true, ob_comp:true, peds:true, abd:true, digit:true, psych:true, kakuho:true, ob_center:"◎総合周産期" },
+  { name:"協立総合病院", area:"名古屋・尾張中部", loc:"名古屋市熱田区",
+    cpa:true, stroke:true, stroke_pct:false, stroke_tpa:false, mi:true, trauma:true, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:true, kakuho:false },
+  { name:"名古屋掖済会病院", area:"名古屋・尾張中部", loc:"名古屋市中川区",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:true, ob_comp:true, peds:true, abd:true, digit:true, psych:true, kakuho:true },
+  { name:"藤田医科大学ばんたね病院", area:"名古屋・尾張中部", loc:"名古屋市中川区",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:true, ob_comp:true, peds:true, abd:true, digit:false, psych:false, kakuho:false },
+  { name:"中部労災病院", area:"名古屋・尾張中部", loc:"名古屋市港区",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:false, ob:true, ob_comp:true, peds:false, abd:true, digit:false, psych:true, kakuho:false },
+  { name:"中京病院", area:"名古屋・尾張中部", loc:"名古屋市南区",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:true, ob_comp:true, peds:true, abd:true, digit:true, psych:true, kakuho:true },
+  { name:"大同病院", area:"名古屋・尾張中部", loc:"名古屋市南区",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:false, ob:true, ob_comp:true, peds:false, abd:true, digit:true, psych:true, kakuho:false, ob_center:"○地域周産期" },
+  { name:"済衆館病院", area:"名古屋・尾張中部", loc:"北名古屋市",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:false, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:true, psych:true, kakuho:false },
+  { name:"はるひ呼吸器病院", area:"名古屋・尾張中部", loc:"清須市",
+    cpa:true, stroke:false, stroke_pct:false, stroke_tpa:false, mi:false, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:false, digit:false, psych:true, kakuho:false },
+  // 追加（名古屋・尾張中部）
+  { name:"吉田病院", area:"名古屋・尾張中部", loc:"名古屋市千種区",
+    cpa:false, stroke:true, stroke_pct:false, stroke_tpa:false, mi:false, trauma:true, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:false, kakuho:false },
+  { name:"東海病院", area:"名古屋・尾張中部", loc:"名古屋市千種区",
+    cpa:false, stroke:false, stroke_pct:false, stroke_tpa:false, mi:false, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:true, psych:false, kakuho:false },
+  { name:"西部医療センター", area:"名古屋・尾張中部", loc:"名古屋市北区",
+    cpa:false, stroke:false, stroke_pct:false, stroke_tpa:false, mi:false, trauma:false, burn:false, ob:true, ob_comp:true, peds:true, abd:true, digit:false, psych:false, kakuho:false, ob_center:"○地域周産期" },
+  { name:"大隈病院", area:"名古屋・尾張中部", loc:"名古屋市北区",
+    cpa:false, stroke:true, stroke_pct:true, stroke_tpa:true, mi:false, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:false, digit:false, psych:false, kakuho:false },
+  { name:"上飯田第一病院", area:"名古屋・尾張中部", loc:"名古屋市北区",
+    cpa:false, stroke:false, stroke_pct:false, stroke_tpa:false, mi:false, trauma:true, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:false, kakuho:false },
+  { name:"米田病院", area:"名古屋・尾張中部", loc:"名古屋市西区",
+    cpa:false, stroke:false, stroke_pct:false, stroke_tpa:false, mi:false, trauma:true, burn:false, ob:false, ob_comp:false, peds:false, abd:false, digit:false, psych:false, kakuho:false },
+  { name:"大菅病院", area:"名古屋・尾張中部", loc:"名古屋市中村区",
+    cpa:false, stroke:false, stroke_pct:false, stroke_tpa:false, mi:false, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:false, kakuho:false },
+  { name:"増子記念病院", area:"名古屋・尾張中部", loc:"名古屋市中村区",
+    cpa:false, stroke:false, stroke_pct:false, stroke_tpa:false, mi:false, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:false, kakuho:false },
+  { name:"大須病院", area:"名古屋・尾張中部", loc:"名古屋市中区",
+    cpa:false, stroke:true, stroke_pct:false, stroke_tpa:false, mi:false, trauma:true, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:true, psych:false, kakuho:false },
+  { name:"中日病院", area:"名古屋・尾張中部", loc:"名古屋市中区",
+    cpa:false, stroke:false, stroke_pct:false, stroke_tpa:false, mi:false, trauma:true, burn:false, ob:false, ob_comp:false, peds:false, abd:false, digit:true, psych:false, kakuho:false },
+  { name:"服部病院", area:"名古屋・尾張中部", loc:"名古屋市熱田区",
+    cpa:false, stroke:false, stroke_pct:false, stroke_tpa:false, mi:false, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:false, kakuho:false },
+  { name:"名古屋共立病院", area:"名古屋・尾張中部", loc:"名古屋市中川区",
+    cpa:false, stroke:false, stroke_pct:false, stroke_tpa:false, mi:true, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:false, kakuho:false },
+  { name:"名古屋西病院", area:"名古屋・尾張中部", loc:"名古屋市中川区",
+    cpa:false, stroke:false, stroke_pct:false, stroke_tpa:false, mi:false, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:false, kakuho:false },
+  { name:"山口病院", area:"名古屋・尾張中部", loc:"名古屋市南区",
+    cpa:false, stroke:false, stroke_pct:false, stroke_tpa:false, mi:false, trauma:true, burn:false, ob:false, ob_comp:false, peds:false, abd:false, digit:false, psych:false, kakuho:false },
+  { name:"みどり市民病院", area:"名古屋・尾張中部", loc:"名古屋市緑区",
+    cpa:false, stroke:true, stroke_pct:false, stroke_tpa:false, mi:false, trauma:true, burn:false, ob:false, ob_comp:true, peds:true, abd:true, digit:true, psych:false, kakuho:false },
+  // === 尾張西部 ===
+  { name:"一宮市立市民病院", area:"尾張西部", loc:"一宮市",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:true, ob_comp:true, peds:true, abd:true, digit:true, psych:true, kakuho:true, ob_center:"○地域周産期" },
+  { name:"総合大雄会病院", area:"尾張西部", loc:"一宮市",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:false, ob_comp:true, peds:true, abd:true, digit:false, psych:true, kakuho:true },
+  { name:"泰玄会病院", area:"尾張西部", loc:"一宮市",
+    cpa:true, stroke:false, stroke_pct:false, stroke_tpa:false, mi:true, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:true, kakuho:false },
+  { name:"一宮西病院", area:"尾張西部", loc:"一宮市",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:false, ob_comp:false, peds:true, abd:true, digit:true, psych:true, kakuho:false },
+  { name:"稲沢市民病院", area:"尾張西部", loc:"稲沢市",
+    cpa:true, stroke:true, stroke_pct:false, stroke_tpa:false, mi:true, trauma:true, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:false, kakuho:false },
+  { name:"稲沢厚生病院", area:"尾張西部", loc:"稲沢市",
+    cpa:true, stroke:false, stroke_pct:false, stroke_tpa:false, mi:true, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:true, kakuho:false },
+  // === 尾張北部 ===
+  { name:"春日井市民病院", area:"尾張北部", loc:"春日井市",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:false, ob:false, ob_comp:true, peds:true, abd:true, digit:true, psych:true, kakuho:true },
+  { name:"名古屋徳洲会病院", area:"尾張北部", loc:"春日井市",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:true, psych:false, kakuho:false },
+  { name:"小牧市民病院", area:"尾張北部", loc:"小牧市",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:true, ob_comp:true, peds:true, abd:true, digit:true, psych:true, kakuho:true, ob_center:"○地域周産期" },
+  { name:"犬山中央病院", area:"尾張北部", loc:"犬山市",
+    cpa:true, stroke:true, stroke_pct:false, stroke_tpa:true, mi:true, trauma:true, burn:false, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:true, kakuho:false },
+  { name:"江南厚生病院", area:"尾張北部", loc:"江南市",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:true, ob_comp:true, peds:true, abd:true, digit:true, psych:true, kakuho:true, ob_center:"○地域周産期" },
+  { name:"さくら総合病院", area:"尾張北部", loc:"大口町",
+    cpa:true, stroke:true, stroke_pct:true, stroke_tpa:true, mi:true, trauma:true, burn:true, ob:false, ob_comp:false, peds:false, abd:true, digit:false, psych:true, kakuho:false },
+  { name:"岩倉病院", area:"尾張北部", loc:"岩倉市",
+    cpa:false, stroke:true, stroke_pct:false, stroke_tpa:false, mi:false, trauma:false, burn:false, ob:false, ob_comp:false, peds:false, abd:false, digit:false, psych:false, kakuho:false },
+];
+
+// ============================
+// エリア表示順序
+// ============================
+const AREA_ORDER = ['尾張北部', '尾張西部', '名古屋・尾張中部'];
+
+// ============================
+// STATE
+// ============================
+let currentMode = 'flow';
+let selectedDisease = null;
+let vitalState = { cpa: null, shock: null };
+let strokeState = { cpss: null, elvo: null, other: null };
+let miState = { a: null, b: null, c: null, d: null, e: null };
+let traumaState = { anat: null, burn: null };
+let obState = { sym: null, comp: null };
+let pedsState = { trauma: null, pat: null, conv: null };
+let abdState = { sym: null };
+let digitState = { trauma: null, prox: null, mech: null, dist: null };
+let psychState = { body: null, symptom: null, danger: null, physical: null, measure: null };
+
+// ============================
+// MODE SWITCH
+// ============================
+function switchMode(m) {
+  currentMode = m;
+  document.getElementById('mode-flow').classList.toggle('hidden', m !== 'flow');
+  document.getElementById('mode-check').classList.toggle('hidden', m !== 'check');
+  document.getElementById('mode-list').classList.toggle('hidden', m !== 'list');
+  document.querySelectorAll('.bottom-nav-item').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + m).classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  // リストモードに切り替わったら初回表示
+  if (m === 'list' && document.getElementById('list-content').innerHTML === '') {
+    selectList(1, document.querySelector('.list-tab[data-list="1"]'));
+  }
+}
+
+// ============================
+// FLOW MODE
+// ============================
+function btnSet(id, val) {
+  const el = document.getElementById(id);
+  if(el) el.className = 'toggle-btn' + (val === true ? ' selected-yes' : val === false ? ' selected-no' : '');
+}
+function sectionShow(id, show) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = show ? '' : 'none';
+  if (show) {
+    // 少し待ってからスクロール（表示アニメーション後）
+    setTimeout(() => {
+      const offset = el.getBoundingClientRect().top + window.scrollY - 80;
+      window.scrollTo({ top: offset, behavior: 'smooth' });
+    }, 80);
+  }
+}
+
+function selectDisease(d) {
+  selectedDisease = d;
+  document.querySelectorAll('.disease-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('d-' + d).classList.add('selected');
+  // reset state
+  vitalState = { cpa: null, shock: null };
+  strokeState = { cpss: null, elvo: null, other: null };
+  miState = { a: null, b: null, c: null, d: null, e: null };
+  traumaState = { anat: null, burn: null };
+  obState = { sym: null, comp: null };
+  pedsState = { trauma: null, pat: null, conv: null };
+  abdState = { sym: null };
+  digitState = { trauma: null, prox: null, mech: null };
+  psychState = { body: null, danger: null, measure: null };
+  // 生理学的評価の案内文を疾患に応じて切り替え
+  const vitalAlert = document.getElementById('vital-alert');
+  if (d === 'digit') {
+    vitalAlert.innerHTML = '⚠️ 心肺機能停止・気道確保困難 → <strong>CPA等対応医療機関（リスト1）</strong><br><span style="font-size:12px;font-weight:400">※その他の生理学的評価に該当する場合 → <strong>外傷対応医療機関（リスト4）</strong></span>';
+  } else {
+    vitalAlert.innerHTML = '⚠️ いずれかに該当すれば → <strong>CPA等対応医療機関（リスト1）</strong>';
+  }
+  // hide all sections
+  sectionShow('v-detail-section', false);
+  sectionShow('s-elvo-section', false);
+  sectionShow('s-other-section', false);
+  sectionShow('t-anat-section', false);
+  sectionShow('o-comp-section', false);
+  sectionShow('p-pat-section', false);
+  sectionShow('dig-level-section', false);
+  sectionShow('dig-mech-section', false);
+  sectionShow('dig-dist-section', false);
+  sectionShow('p-symptom-section', false);
+  sectionShow('p-danger-section', false);
+  sectionShow('p-physical-section', false);
+  sectionShow('p-measure-section', false);
+    // show question section, hide all disease flows and result
+  document.getElementById('flow-questions').classList.remove('hidden');
+  ['stroke','mi','trauma','ob','peds','abd','digit','psych'].forEach(x => {
+    const el = document.getElementById('flow-' + x);
+    if(el) el.classList.add('hidden');
+  });
+  document.getElementById('flow-result').classList.add('hidden');
+  document.getElementById('flow-result').innerHTML = '';
+  // 生理学的評価カードへスクロール
+  setTimeout(() => {
+    const el = document.getElementById('q-vital');
+    if (el) {
+      const offset = el.getBoundingClientRect().top + window.scrollY - 80;
+      window.scrollTo({ top: offset, behavior: 'smooth' });
+    }
+  }, 80);
+}
+
+function showDiseaseFlow(d) {
+  ['stroke','mi','trauma','ob','peds','abd','digit','psych'].forEach(x => {
+    const el = document.getElementById('flow-' + x);
+    if(el) el.classList.toggle('hidden', x !== d);
+  });
+  // 表示された疾患フローへスクロール
+  setTimeout(() => {
+    const el = document.getElementById('flow-' + d);
+    if (el) {
+      const offset = el.getBoundingClientRect().top + window.scrollY - 80;
+      window.scrollTo({ top: offset, behavior: 'smooth' });
+    }
+  }, 80);
+}
+
+function setVital(type, val) {
+  vitalState[type] = val;
+  btnSet('v-cpa-yes', type==='cpa' && val);
+  btnSet('v-cpa-no',  type==='cpa' && !val);
+  btnSet('v-shock-yes', type==='shock' && val);
+  btnSet('v-shock-no',  type==='shock' && !val);
+
+  if (type === 'cpa') {
+    if (val) { showFlowResult('list1'); }
+    else { sectionShow('v-detail-section', true); }
+  }
+  if (type === 'shock') {
+    if (val) {
+      // 手指切断の場合のみ生理学的評価あり → リスト4（外傷）
+      // それ以外 → リスト1（CPA等）
+      if (selectedDisease === 'digit') {
+        showFlowResult('trauma');
+      } else {
+        showFlowResult('list1');
+      }
+    } else {
+      showDiseaseFlow(selectedDisease);
+    }
+  }
+}
+
+// ① 脳卒中
+function setStroke(type, val) {
+  strokeState[type] = val;
+  btnSet('s-cpss-yes',  type==='cpss'  && val === true);
+  btnSet('s-cpss-no',   type==='cpss'  && val === false);
+  btnSet('s-elvo-yes',  type==='elvo'  && val === true);
+  btnSet('s-elvo-no',   type==='elvo'  && val === false);
+  btnSet('s-other-yes', type==='other' && val === true);
+  btnSet('s-other-no',  type==='other' && val === false);
+
+  if (type === 'cpss') {
+    // CPSS あり・なし どちらもELVO確認へ
+    sectionShow('s-elvo-section', true);
+    sectionShow('s-other-section', false);
+  }
+  if (type === 'elvo') {
+    if (val) {
+      // ELVOあり → CPSS有無に関わらず血栓回収
+      showFlowResult('stroke-elvo');
+    } else {
+      // ELVOなし → CPSSありなら一次SC、CPSSなしならその他症状へ
+      if (strokeState.cpss === true) {
+        showFlowResult('stroke-cpss');
+      } else {
+        sectionShow('s-other-section', true);
+      }
+    }
+  }
+  if (type === 'other') {
+    if (val) {
+      showFlowResult('stroke-other');
+    } else {
+      showNoMatch('🧠 脳卒中特有症状のいずれにも該当しませんでした。脳卒中疑いなし。');
+    }
+  }
+}
+
+// ② 心筋梗塞
+function setMI(type, val) {
+  btnSet('mi-yes', val === true);
+  btnSet('mi-no',  val === false);
+  if (val) {
+    showFlowResult('mi');
+  } else {
+    showNoMatch('❤️ 心筋梗塞特有項目のいずれにも該当しませんでした。心筋梗塞疑いなし。');
+  }
+}
+
+// ③ 外傷・熱傷
+function setTrauma(type, val) {
+  traumaState[type] = val;
+  btnSet('t-burn-yes', type==='burn' && val === true);
+  btnSet('t-burn-no',  type==='burn' && val === false);
+  btnSet('t-anat-yes', type==='anat' && val === true);
+  btnSet('t-anat-no',  type==='anat' && val === false);
+
+  if (type === 'burn') {
+    if (val) { showFlowResult('trauma-burn'); }        // 熱傷特有あり → リスト4
+    else { sectionShow('t-anat-section', true); }      // なし → 外傷評価へ
+  }
+  if (type === 'anat') {
+    if (val) { showFlowResult('trauma'); }             // 外傷特有あり → リスト4
+    else { showNoMatch('🩹 外傷・熱傷の重症項目に該当しませんでした。中等症以下 → 各消防本部対応。'); }
+  }
+}
+
+// ④ 妊産婦
+function setOB(type, val) {
+  obState[type] = val;
+  btnSet('o-sym-yes',  type==='sym'  && val === true);
+  btnSet('o-sym-no',   type==='sym'  && val === false);
+  btnSet('o-comp-yes', type==='comp' && val === true);
+  btnSet('o-comp-no',  type==='comp' && val === false);
+
+  if (type === 'sym') {
+    if (val) { sectionShow('o-comp-section', true); }  // 重症 → 合併症確認へ
+    else { showNoMatch('🤰 妊産婦特有症状に該当しませんでした。中等症以下 → 各消防本部対応。'); }
+  }
+  if (type === 'comp') {
+    showFlowResult(val ? 'ob-comp' : 'ob');
+  }
+}
+
+// ⑤ 小児
+function setPeds(type, val) {
+  pedsState[type] = val;
+  btnSet('p-trauma-yes', type==='trauma' && val === true);
+  btnSet('p-trauma-no',  type==='trauma' && val === false);
+  btnSet('p-pat-yes',    type==='pat'    && val === true);
+  btnSet('p-pat-no',     type==='pat'    && val === false);
+
+  if (type === 'trauma') {
+    if (val) { showFlowResult('trauma'); }           // 外傷・熱傷 → リスト4
+    else { sectionShow('p-pat-section', true); }     // なし → 小児特有項目評価へ
+  }
+  if (type === 'pat') {
+    if (val) { showFlowResult('peds'); }             // 小児特有項目あり → 重症 → リスト7
+    else { showNoMatch('👶 小児特有項目に該当しませんでした。中等症以下 → 各消防本部対応。'); }
+  }
+}
+
+// ⑥ 急性腹症
+function setAbd(val) {
+  abdState.sym = val;
+  btnSet('abd-yes', val === true);
+  btnSet('abd-no',  val === false);
+  if (val) { showFlowResult('abd'); }
+  else { showNoMatch('🫁 急性腹症・消化管出血の特有項目に該当しませんでした。急性腹症疑いなし。'); }
+}
+
+// ⑦ 手指切断
+function setDigit(type, val) {
+  digitState[type] = val;
+  btnSet('dig-trauma-yes', type==='trauma' && val === true);
+  btnSet('dig-trauma-no',  type==='trauma' && val === false);
+  btnSet('dig-prox-yes',   type==='prox'   && val === true);
+  btnSet('dig-prox-no',    type==='prox'   && val === false);
+  btnSet('dig-mech-yes',   type==='mech'   && val === true);
+  btnSet('dig-mech-no',    type==='mech'   && val === false);
+  btnSet('dig-dist-yes',   type==='dist'   && val === true);
+  btnSet('dig-dist-no',    type==='dist'   && val === false);
+
+  if (type === 'trauma') {
+    if (val) { showFlowResult('trauma'); }              // 外傷特有・出血コントロール困難 → リスト4
+    else { sectionShow('dig-level-section', true); }    // なし → 切断レベル評価へ
+  }
+  if (type === 'prox') {
+    if (val) { showFlowResult('digit-prox'); }          // 近位・母指・多数・小児・再接着 → リスト9
+    else { sectionShow('dig-mech-section', true); }     // なし → 受傷機転確認へ
+  }
+  if (type === 'mech') {
+    if (val) { showFlowResult('digit-tele'); }          // 巻き込み・プレス機 → Teletriage
+    else { sectionShow('dig-dist-section', true); }     // なし → PIP遠位の解剖学的評価へ
+  }
+  if (type === 'dist') {
+    if (val) { showFlowResult('digit-tele'); }          // PIP遠位等 → Teletriage
+    else { showNoMatch('✋ 医療機関リストは作成しません。各消防本部の対応方針に従ってください。'); }
+  }
+}
+
+// ⑧ 精神疾患
+function setPsych(type, val) {
+  psychState[type] = val;
+  btnSet('p-body-yes',     type==='body'     && val === true);
+  btnSet('p-body-no',      type==='body'     && val === false);
+  btnSet('p-symptom-yes',  type==='symptom'  && val === true);
+  btnSet('p-symptom-no',   type==='symptom'  && val === false);
+  btnSet('p-danger-yes',   type==='danger'   && val === true);
+  btnSet('p-danger-no',    type==='danger'   && val === false);
+  btnSet('p-physical-yes', type==='physical' && val === true);
+  btnSet('p-physical-no',  type==='physical' && val === false);
+  btnSet('p-measure-yes',  type==='measure'  && val === true);
+  btnSet('p-measure-no',   type==='measure'  && val === false);
+
+  if (type === 'body') {
+    if (val) {
+      // 各分類観察基準に該当 → 各分類対応医療機関リスト
+      showFlowResult('psych-body');
+    } else {
+      // なし → B: 精神症状を伴う身体疾患・その他の確認へ
+      sectionShow('p-symptom-section', true);
+      sectionShow('p-danger-section', false);
+      sectionShow('p-physical-section', false);
+      sectionShow('p-measure-section', false);
+    }
+  }
+  if (type === 'symptom') {
+    if (val) {
+      // 精神症状を伴う身体疾患・その他に該当 → 救急告示医療機関
+      showFlowResult('psych-symptom');
+    } else {
+      // なし → C: 自傷・他害の恐れ確認へ
+      sectionShow('p-danger-section', true);
+      sectionShow('p-physical-section', false);
+      sectionShow('p-measure-section', false);
+    }
+  }
+  if (type === 'danger') {
+    if (val) {
+      // 自傷・他害あり → 精神保健福祉法に基づく通報
+      showFlowResult('psych-danger');
+    } else {
+      // なし → D: 身体症状の有無確認へ
+      sectionShow('p-physical-section', true);
+      sectionShow('p-measure-section', false);
+    }
+  }
+  if (type === 'physical') {
+    if (val) {
+      // 身体症状あり → リスト10（精神・身体合併症）
+      showFlowResult('psych-body');
+    } else {
+      // なし → ①精神科かかりつけ・②当番病院・③その他精神科病院
+      showFlowResult('psych-only');
+    }
+  }
+  if (type === 'measure') {
+    if (val) {
+      // 措置要 → 措置入院
+      showFlowResult('psych-measure');
+    } else {
+      // 否 → 精神科かかりつけ・当番病院・その他精神科
+      showFlowResult('psych-only');
+    }
+  }
+}
+
+function showNoMatch(msg) {
+  const resultEl = document.getElementById('flow-result');
+  resultEl.classList.remove('hidden');
+  resultEl.classList.add('fade-in');
+  resultEl.innerHTML = `
+    <div class="alert-box green">✅ ${msg}</div>
+    <button class="reset-btn" onclick="resetFlow()">↺ 最初からやり直す</button>
+  `;
+  resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ============================
+// SHOW FLOW RESULT
+// ============================
+function showFlowResult(type) {
+  const resultEl = document.getElementById('flow-result');
+  resultEl.classList.remove('hidden');
+  resultEl.innerHTML = '';
+  resultEl.classList.add('fade-in');
+
+  let filtered = [];
+  let listName = '';
+  let alertHtml = '';
+  let noteHtml = '';
+
+  switch(type) {
+    case 'list1':
+      listName = '医療機関リスト1：CPA等対応医療機関';
+      alertHtml = '<div class="alert-box">🚨 重篤 → <strong>CPA等対応医療機関（リスト1）</strong>へ搬送</div>';
+      filtered = HOSPITALS.filter(h => h.cpa);
+      break;
+    case 'stroke-elvo':
+      listName = '医療機関リスト2（脳卒中）：機械的血栓回収療法実施可能';
+      alertHtml = '<div class="alert-box blue">🧠 CPSS該当 ＋ ELVO該当 → <strong>機械的血栓回収療法の実施が可能な医療機関</strong>への搬送を考慮</div>';
+      noteHtml = '<div style="background:#EBF5FB;border-left:4px solid #2471A3;padding:10px 12px;border-radius:0 8px 8px 0;font-size:12px;color:var(--text-mid);margin-bottom:10px;"><strong style="color:#1A2535">機械的血栓回収療法とは</strong><br>脳の血管を詰まらせた血栓をカテーテルを用いて機械的に取り除く治療法。大血管閉塞（ELVO）が疑われる場合に適応となる。</div>';
+      filtered = HOSPITALS.filter(h => h.stroke_tpa);
+      break;
+    case 'stroke-cpss':
+      listName = '医療機関リスト2（脳卒中）：一次脳卒中センター';
+      alertHtml = '<div class="alert-box blue">🧠 CPSS該当 ＋ ELVOなし → <strong>一次脳卒中センター</strong>への搬送を考慮</div>';
+      noteHtml = '<div style="background:#EBF5FB;border-left:4px solid #2471A3;padding:10px 12px;border-radius:0 8px 8px 0;font-size:12px;color:var(--text-mid);margin-bottom:10px;"><strong style="color:#1A2535">一次脳卒中センターとは</strong><br>24時間365日脳卒中患者を受け入れ、rt-PA静注療法（血栓溶解療法）を含む速やかな診療が可能な医療機関。</div>';
+      filtered = HOSPITALS.filter(h => h.stroke_pct);
+      break;
+    case 'stroke-other':
+      listName = '医療機関リスト2：脳卒中等対応医療機関';
+      alertHtml = '<div class="alert-box blue">🧠 その他脳卒中症状に該当 → <strong>脳卒中等対応医療機関（リスト2）</strong>へ搬送</div>';
+      filtered = HOSPITALS.filter(h => h.stroke);
+      break;
+    case 'mi':
+      listName = '医療機関リスト3：心筋梗塞対応医療機関';
+      alertHtml = '<div class="alert-box" style="background:#FEF9E7;border-color:#D4AC0D;color:#7D6608">❤️ 心筋梗塞疑い → <strong>心筋梗塞対応医療機関（リスト3）</strong></div>';
+      filtered = HOSPITALS.filter(h => h.mi);
+      break;
+    case 'trauma':
+      listName = '医療機関リスト4：外傷対応医療機関';
+      alertHtml = '<div class="alert-box green">🩹 重症外傷 → <strong>外傷対応医療機関（リスト4）</strong></div>';
+      filtered = HOSPITALS.filter(h => h.trauma);
+      break;
+    case 'trauma-burn':
+      listName = '医療機関リスト4：外傷・熱傷対応医療機関';
+      alertHtml = '<div class="alert-box green">🔥 外傷・熱傷 → <strong>外傷・熱傷対応医療機関（リスト4）</strong></div>';
+      noteHtml = '<div class="alert-box" style="background:#FFF3E0;border-color:#FF9800;color:#E65100;margin-bottom:10px">⚠️ 特に緊急性が高い熱傷は、気道・呼吸・循環の維持を優先し直近の初期診療可能医療機関への搬送を考慮</div>';
+      filtered = HOSPITALS.filter(h => h.burn);
+      break;
+    case 'ob':
+      listName = '医療機関リスト5：妊産婦対応医療機関';
+      alertHtml = '<div class="alert-box" style="background:#F5EEF8;border-color:#7D3C98;color:#6C3483">🤰 妊産婦（合併症なし）→ <strong>妊産婦対応医療機関（リスト5）</strong></div>';
+      filtered = HOSPITALS.filter(h => h.ob);
+      break;
+    case 'ob-comp':
+      listName = '医療機関リスト6：合併症妊産婦対応医療機関';
+      alertHtml = '<div class="alert-box" style="background:#F5EEF8;border-color:#7D3C98;color:#6C3483">🤰 合併症妊産婦 → <strong>合併症妊産婦対応医療機関（リスト6）</strong></div>';
+      filtered = HOSPITALS.filter(h => h.ob_comp);
+      break;
+    case 'peds':
+      listName = '医療機関リスト7：小児対応医療機関';
+      alertHtml = '<div class="alert-box blue">👶 重症小児 → <strong>小児対応医療機関（リスト7）</strong></div>';
+      filtered = HOSPITALS.filter(h => h.peds);
+      break;
+    case 'abd':
+      listName = '医療機関リスト8：急性腹症・消化管出血対応医療機関';
+      alertHtml = '<div class="alert-box green">🫁 急性腹症疑い → <strong>急性腹症・消化管出血対応医療機関（リスト8）</strong></div>';
+      filtered = HOSPITALS.filter(h => h.abd);
+      break;
+    case 'digit-prox':
+      listName = '医療機関リスト9：手指切断対応医療機関';
+      alertHtml = '<div class="alert-box">✋ 近位・母指・多数指・小児・再接着希望 → <strong>手指切断対応医療機関（リスト9）</strong>へ搬送</div>';
+      filtered = HOSPITALS.filter(h => h.digit);
+      break;
+    case 'digit-tele':
+      listName = 'Interactive Teletriage → 手指切断対応医療機関（リスト9）';
+      alertHtml = '<div class="alert-box">✋ 機械巻き込み・プレス機等 → <strong>Interactive Teletriage</strong>を実施してリスト9へ搬送</div>';
+      noteHtml = '<div class="alert-box blue" style="margin-bottom:10px">📸 Teletriage対応：平日9〜17時｜写真・指肢切断チェック表による管制<br>・名古屋大学医学部附属病院（名古屋市）<br>・愛知医科大学病院（尾張地域）<br>※対応時間外は各消防本部対応</div>';
+      filtered = HOSPITALS.filter(h => h.digit);
+      break;
+    case 'psych-body':
+      listName = '医療機関リスト10：精神・身体合併症対応医療機関';
+      alertHtml = '<div class="alert-box" style="background:#F4F6F7;border-color:#616A6B;color:#4D5656">🧩 精神＋身体合併症 → <strong>精神・身体合併症対応医療機関（リスト10）</strong></div>';
+      noteHtml = '<div class="alert-box blue" style="margin-bottom:10px">※身体症状の分類（脳卒中・外傷等）に応じて各分類の医療機関リストも参照してください</div>';
+      filtered = HOSPITALS.filter(h => h.psych);
+      break;
+    case 'psych-symptom':
+      listName = '救急告示医療機関';
+      alertHtml = '<div class="alert-box" style="background:#F4F6F7;border-color:#616A6B;color:#4D5656">🧩 精神症状を伴う身体疾患・アルコール・薬物等 → <strong>救急告示医療機関</strong>へ搬送</div>';
+      noteHtml = '<div style="background:#fff;border:2px solid var(--border);border-radius:8px;padding:14px;font-size:13px;color:var(--text-mid);margin-bottom:10px;">救急告示医療機関に搬送し、適切な初期診療を受けさせてください。</div>';
+      filtered = [];
+      break;
+    case 'psych-danger':
+      listName = '精神保健福祉法に基づく通報';
+      alertHtml = '<div class="alert-box" style="background:#F4F6F7;border-color:#616A6B;color:#4D5656">🧩 自傷・他害の恐れあり → <strong>精神保健福祉法に基づく通報</strong></div>';
+      noteHtml = '<div style="background:#fff;border:2px solid var(--border);border-radius:8px;padding:14px;font-size:13px;color:var(--text-mid);margin-bottom:10px;">警察等への通報・連絡を行い、措置診察の手続きを進めてください。</div>';
+      filtered = [];
+      break;
+    case 'psych-measure':
+      listName = '措置入院対応医療機関';
+      alertHtml = '<div class="alert-box" style="background:#F4F6F7;border-color:#616A6B;color:#4D5656">🧩 措置診察要 → <strong>措置診察・措置入院可能な医療機関</strong>へ搬送</div>';
+      filtered = [];
+      break;
+    case 'psych-only':
+      listName = '精神科搬送先';
+      alertHtml = '<div class="alert-box" style="background:#F4F6F7;border-color:#616A6B;color:#4D5656">🧩 措置診察不要 → 以下の順で搬送先を選定</div>';
+      noteHtml = `<div style="background:#fff;border:2px solid #9E9E9E;border-radius:8px;padding:14px;margin-bottom:10px;font-size:13px;">
+        <div style="margin-bottom:8px;">① <strong>精神科かかりつけ医療機関</strong><br><span style="color:#8A9BB0;font-size:11px;">※3ヶ月以内に当該精神症状により受診した医療機関</span></div>
+        <div style="margin-bottom:8px;">② <strong>当番病院</strong>（精神科救急医療対策事業）</div>
+        <div>③ <strong>その他精神科病院</strong></div>
+      </div>`;
+      filtered = [];
+      break;
+  }
+
+  let html = alertHtml + noteHtml;
+
+  if (filtered.length > 0) {
+    html += `<div class="result-count">対象医療機関 <strong>${filtered.length}</strong> 施設（尾張・名古屋圏）</div>`;
+    // Group by area（指定順）
+    const areas = AREA_ORDER.filter(a => filtered.some(h => h.area === a));
+    areas.forEach(area => {
+      const areaHospitals = filtered.filter(h => h.area === area);
+      html += `<div class="list-header">📍 ${area}（${areaHospitals.length}施設）</div>`;
+      html += '<div class="hospital-list">';
+      areaHospitals.forEach(h => {
+        html += `<div class="hospital-item">`;
+        html += '<div style="flex:1">';
+        html += `<div class="hospital-name">${h.name}</div>`;
+        html += `<div class="hospital-area">${h.loc}</div>`;
+        html += '<div class="hospital-tags">';
+        if(h.cpa) html += '<span class="tag tag-cpa">CPA</span>';
+        if(h.stroke_tpa) html += '<span class="tag tag-stroke-pct">血栓回収</span>';
+        if(h.stroke_pct) html += '<span class="tag tag-stroke">一次SC</span>';
+        else if(!h.stroke_tpa && !h.stroke_pct && h.stroke) html += '<span class="tag tag-stroke">脳卒中</span>';
+        if(h.mi) html += '<span class="tag tag-mi">心筋梗塞</span>';
+        if(h.burn) html += '<span class="tag tag-burn">熱傷</span>';
+        else if(h.trauma) html += '<span class="tag tag-trauma">外傷</span>';
+        if(h.ob_comp) html += '<span class="tag tag-ob">合併症妊産婦</span>';
+        else if(h.ob) html += '<span class="tag tag-ob">妊産婦</span>';
+        if(h.peds) html += '<span class="tag tag-peds">小児</span>';
+        if(h.abd) html += '<span class="tag tag-abd">急性腹症</span>';
+        if(h.digit) html += '<span class="tag tag-digit">手指切断</span>';
+        if(h.psych) html += '<span class="tag tag-psych">精神</span>';
+        if(h.tele) html += '<span class="tag tag-tele">Teletriage</span>';
+        if(h.ob_center) html += `<span class="tag tag-ob">${h.ob_center}</span>`;
+        html += '</div></div>';
+        html += '</div>';
+      });
+      html += '</div><div style="height:10px"></div>';
+    });
+  }
+
+  html += `<button class="reset-btn" onclick="resetFlow()">↺ 最初からやり直す</button>`;
+  resultEl.innerHTML = html;
+  resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function resetFlow() {
+  selectedDisease = null;
+  document.querySelectorAll('.disease-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('flow-questions').classList.add('hidden');
+  document.getElementById('flow-result').classList.add('hidden');
+  document.getElementById('flow-result').innerHTML = '';
+  ['stroke','mi','trauma','ob','peds','abd','digit','psych'].forEach(x => {
+    const el = document.getElementById('flow-' + x);
+    if(el) el.classList.add('hidden');
+  });
+}
+
+// ============================
+// CHECK MODE
+// ============================
+
+// カテゴリタブ → 対応するsg-idのマップ
+const TAB_GROUP_MAP = {
+  'sg-vital':  '⚠️ 重篤',
+  'sg-stroke': '🧠 脳卒中',
+  'sg-mi':     '❤️ 心梗',
+  'sg-trauma': '🩹 外傷',
+  'sg-burn':   '🔥 熱傷',
+  'sg-ob':     '🤰 妊産婦',
+  'sg-peds':   '👶 小児',
+  'sg-abd':    '🫁 腹症',
+  'sg-digit':  '✋ 手指',
+  'sg-psych':  '🧩 精神',
+};
+
+function scrollToGroup(id, tabEl) {
+  // タブのアクティブ切り替え
+  document.querySelectorAll('.cat-tab').forEach(t => {
+    if(!t.classList.contains('has-check')) t.classList.remove('active');
+    else t.classList.remove('active');
+  });
+  tabEl.classList.add('active');
+
+  const target = document.getElementById(id);
+  if (!target) return;
+  const offset = target.getBoundingClientRect().top + window.scrollY - 120;
+  window.scrollTo({ top: offset, behavior: 'smooth' });
+}
+
+function updateSummary() {
+  const checked = document.querySelectorAll('.symptom-check.checked');
+  const summaryEl = document.getElementById('selected-summary');
+  const tagsArea = document.getElementById('selected-tags-area');
+  const badge = document.getElementById('selected-count-badge');
+
+  if (checked.length === 0) {
+    summaryEl.style.display = 'none';
+    // タブのhas-checkをリセット
+    document.querySelectorAll('.cat-tab').forEach(t => t.classList.remove('has-check', 'active'));
+    document.querySelector('.cat-tab[data-target="sg-vital"]').classList.add('active');
+    return;
+  }
+
+  summaryEl.style.display = '';
+  badge.textContent = checked.length + '件';
+
+  // タグ再描画
+  tagsArea.innerHTML = '';
+  checked.forEach(el => {
+    const tag = document.createElement('div');
+    tag.className = 'sel-tag';
+    tag.innerHTML = el.textContent + '<span class="sel-tag-x">×</span>';
+    tag.onclick = () => {
+      el.classList.remove('checked');
+      updateSummary();
+      updateTabHasCheck();
+    };
+    tagsArea.appendChild(tag);
+  });
+
+  updateTabHasCheck();
+}
+
+function updateTabHasCheck() {
+  // 各タブのhas-checkを更新
+  document.querySelectorAll('.cat-tab').forEach(tab => {
+    const targetId = tab.dataset.target;
+    const group = document.getElementById(targetId);
+    if (!group) return;
+    const hasChecked = group.querySelector('.symptom-check.checked');
+    tab.classList.toggle('has-check', !!hasChecked);
+  });
+}
+
+function toggleCheck(el) {
+  el.classList.toggle('checked');
+  updateSummary();
+  updateTabHasCheck();
+}
+
+function runCheckSearch() {
+  const checked = document.querySelectorAll('.symptom-check.checked');
+  const cats = new Set();
+  checked.forEach(c => {
+    c.dataset.cats.split(',').forEach(cat => cats.add(cat.trim()));
+  });
+
+  const resultEl = document.getElementById('check-result');
+  resultEl.classList.remove('hidden');
+  resultEl.innerHTML = '';
+  resultEl.classList.add('fade-in');
+
+  if (cats.size === 0) {
+    resultEl.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon">☑️</div><div class="empty-text">所見を1つ以上選択してください</div></div></div></div>';
+    return;
+  }
+
+  // カテゴリ → 対応するリスト・フィルタ
+  const catMap = {
+    'cpa':    h => h.cpa,
+    'stroke': h => h.stroke,
+    'mi':     h => h.mi,
+    'trauma': h => h.trauma,
+    'burn':   h => h.burn,
+    'ob':     h => h.ob || h.ob_comp,
+    'ob-comp':h => h.ob_comp,
+    'peds':   h => h.peds,
+    'abd':    h => h.abd,
+    'digit':  h => h.digit,
+    'psych':  h => h.psych,
+  };
+
+  const catLabel = {
+    'cpa':    '🚨 CPA等対応（リスト1）',
+    'stroke': '🧠 脳卒中対応',
+    'mi':     '❤️ 心筋梗塞対応',
+    'trauma': '🩹 外傷対応',
+    'burn':   '🔥 熱傷対応',
+    'ob':     '🤰 妊産婦対応',
+    'ob-comp':'🤰 合併症妊産婦対応',
+    'peds':   '👶 小児対応',
+    'abd':    '🫁 急性腹症対応',
+    'digit':  '✋ 手指切断対応',
+    'psych':  '🧩 精神・身体合併症対応',
+  };
+
+  // 複数カテゴリに対応する病院（AND or OR）
+  const allFns = [...cats].filter(c => catMap[c]).map(c => catMap[c]);
+  if (allFns.length === 0) {
+    resultEl.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">該当する分類が見つかりませんでした</div></div></div></div>';
+    return;
+  }
+
+  // 生理学的所見で重篤判定
+  const isCritical = cats.has('cpa');
+
+  let html = '';
+  if(isCritical) {
+    html += '<div class="alert-box">🚨 生理学的評価が重篤 → <strong>CPA等対応医療機関（リスト1）</strong>への搬送を最優先で検討</div>';
+  }
+
+  [...cats].filter(c => catMap[c]).forEach(cat => {
+    const fn = catMap[cat];
+    const hospitals = HOSPITALS.filter(fn);
+    const areas = AREA_ORDER.filter(a => hospitals.some(h => h.area === a));
+    html += `<div class="result-label">📋 ${catLabel[cat]}（${hospitals.length}施設）</div>`;
+    areas.forEach(area => {
+      const areaH = hospitals.filter(h => h.area === area);
+      html += `<div class="list-header">📍 ${area}</div><div class="hospital-list">`;
+      areaH.forEach(h => {
+        html += `<div class="hospital-item">`;
+        html += `<div style="flex:1"><div class="hospital-name">${h.name}</div>`;
+        html += `<div class="hospital-area">${h.loc}</div>`;
+        html += '<div class="hospital-tags">';
+        if(h.stroke_tpa) html += '<span class="tag tag-stroke-pct">血栓回収</span>';
+        if(h.stroke_pct) html += '<span class="tag tag-stroke">一次SC</span>';
+        if(h.mi) html += '<span class="tag tag-mi">心梗</span>';
+        if(h.burn) html += '<span class="tag tag-burn">熱傷</span>';
+        if(h.ob_comp) html += '<span class="tag tag-ob">合併妊産婦</span>';
+        else if(h.ob) html += '<span class="tag tag-ob">妊産婦</span>';
+        if(h.peds) html += '<span class="tag tag-peds">小児</span>';
+        if(h.abd) html += '<span class="tag tag-abd">腹症</span>';
+        if(h.digit) html += '<span class="tag tag-digit">手指</span>';
+        if(h.psych) html += '<span class="tag tag-psych">精神</span>';
+        html += '</div></div>';
+        html += '</div>';
+      });
+      html += '</div><div style="height:8px"></div>';
+    });
+  });
+
+  html += '<button class="reset-btn" onclick="resetCheck()">↺ 選択をリセット</button>';
+  resultEl.innerHTML = html;
+  resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function resetCheck() {
+  document.querySelectorAll('.symptom-check.checked').forEach(el => el.classList.remove('checked'));
+  document.getElementById('check-result').classList.add('hidden');
+  document.getElementById('check-result').innerHTML = '';
+  updateSummary();
+}
+
+// ============================
+// LIST MODE
+// ============================
+const LIST_CONFIG = {
+  1:  { title:'CPA等対応医療機関',             sub:'心肺停止・重篤な傷病者',         filter: h => h.cpa,      note: '※愛知県救急業務高度化推進事業実施要領により指定医療機関も含む。あいち小児保健医療総合センターは小児に限る。' },
+  2:  { title:'脳卒中対応医療機関',             sub:'脳卒中疑い',                     filter: h => h.stroke,   note: '【血栓回収療法】脳の血管を詰まらせた血栓を機械的に回収する治療。大血管閉塞（ELVO）が疑われる場合に搬送を考慮する。\n【一次脳卒中センター】24時間365日脳卒中患者を受け入れ、rt-PA静注療法を含む速やかな診療が可能な医療機関。CPSSに該当しELVOなしの場合に搬送を考慮する。' },
+  3:  { title:'心筋梗塞対応医療機関',           sub:'心筋梗塞疑い',                   filter: h => h.mi,       note: '' },
+  4:  { title:'外傷・熱傷対応医療機関',         sub:'重症度・緊急度が高い外傷・熱傷', filter: h => h.trauma || h.burn, note: '※あいち小児保健医療総合センターは小児に限る。' },
+  5:  { title:'妊産婦対応医療機関',             sub:'重症度・緊急度が高い妊産婦',     filter: h => h.ob,       note: '◎：総合周産期母子医療センター　○：地域周産期母子医療センター' },
+  6:  { title:'合併症妊産婦対応医療機関',       sub:'脳卒中・心筋梗塞・外傷・熱傷を合併', filter: h => h.ob_comp, note: '' },
+  7:  { title:'小児対応医療機関',               sub:'重症度・緊急度が高い小児（15歳未満）', filter: h => h.peds,  note: '' },
+  8:  { title:'急性腹症・消化管出血対応医療機関', sub:'急性腹症・消化管出血疑い',     filter: h => h.abd,      note: '' },
+  9:  { title:'手指切断対応医療機関',           sub:'重症度・緊急度が高い手指切断',   filter: h => h.digit,    note: 'Interactive Teletriage：平日9〜17時。名古屋大学医学部附属病院（名古屋市）・愛知医科大学病院（尾張地域）が担当。' },
+  10: { title:'精神・身体合併症対応医療機関',   sub:'精神疾患（身体合併症を含む）',   filter: h => h.psych,    note: '' },
+  11: { title:'確保基準対象医療機関',           sub:'2回照会不能時に受入要請する医療機関', filter: h => h.kakuho || h.kakuho_psych, note: '※2回照会してもなお搬送先が決定しない場合に活用。精神疾患のみの場合は愛知県精神医療センター（4回照会後）。' },
+};
+
+function selectList(num, tabEl) {
+  // タブ切り替え
+  document.querySelectorAll('.list-tab').forEach(t => t.classList.remove('active'));
+  if (tabEl) tabEl.classList.add('active');
+
+  const cfg = LIST_CONFIG[num];
+  const hospitals = HOSPITALS.filter(cfg.filter);
+  const areas = AREA_ORDER.filter(a => hospitals.some(h => h.area === a));
+
+  let html = `<div class="card">`;
+  html += `<div class="list-section-header">`;
+  html += `<div class="list-section-title">医療機関リスト${num}：${cfg.title}</div>`;
+  html += `<div class="list-section-sub">${cfg.sub}　全${hospitals.length}施設</div>`;
+  html += `</div>`;
+  if (cfg.note) {
+    if (num === 2) {
+      // 脳卒中リストは血栓回収・一次SCの説明を整形して表示
+      const lines = cfg.note.split('\n');
+      html += `<div class="list-note" style="padding:10px 12px;">`;
+      lines.forEach(line => {
+        const m = line.match(/^(【.+?】)(.+)$/);
+        if (m) html += `<div style="margin-bottom:6px"><span style="font-weight:700;color:var(--navy)">${m[1]}</span>${m[2]}</div>`;
+        else if (line) html += `<div style="margin-bottom:4px">${line}</div>`;
+      });
+      html += `</div>`;
+    } else {
+      html += `<div class="list-note">⚠️ ${cfg.note}</div>`;
+    }
+  }
+
+  areas.forEach(area => {
+    const areaH = hospitals.filter(h => h.area === area);
+    html += `<div class="list-area-header">📍 ${area}<span class="list-area-count">${areaH.length}施設</span></div>`;
+    areaH.forEach(h => {
+      html += `<div class="list-hospital-item">`;
+      html += `<div class="list-hospital-name">${h.name}</div>`;
+      html += `<div class="list-hospital-loc">${h.loc}</div>`;
+      // バッジ
+      const badges = [];
+      if (num === 2) {
+        if (h.stroke_tpa && h.stroke_pct) {
+          badges.push(`<span class="list-badge list-badge-tpa">血栓回収療法</span>`);
+          badges.push(`<span class="list-badge list-badge-pct">一次脳卒中センター</span>`);
+        } else if (h.stroke_tpa) {
+          badges.push(`<span class="list-badge list-badge-tpa">血栓回収療法</span>`);
+        } else if (h.stroke_pct) {
+          badges.push(`<span class="list-badge list-badge-pct">一次脳卒中センター</span>`);
+        }
+      }
+      if (num === 4) {
+        if (h.burn && h.trauma) badges.push(`<span class="list-badge list-badge-burn">外傷・熱傷</span>`);
+        else if (h.burn) badges.push(`<span class="list-badge list-badge-burn">熱傷</span>`);
+        else badges.push(`<span class="list-badge" style="background:#EAFAF1;color:#1E8449">外傷のみ</span>`);
+      }
+      if (num === 5 && h.ob_center) badges.push(`<span class="list-badge list-badge-ob">${h.ob_center}</span>`);
+      if (num === 6) {
+        if (h.stroke_tpa) badges.push(`<span class="list-badge list-badge-tpa">血栓回収</span>`);
+        if (h.mi) badges.push(`<span class="list-badge" style="background:#FEF9E7;color:#B7950B">心梗</span>`);
+        if (h.trauma) badges.push(`<span class="list-badge" style="background:#EAFAF1;color:#1E8449">外傷</span>`);
+        if (h.burn) badges.push(`<span class="list-badge list-badge-burn">熱傷</span>`);
+      }
+      if (num === 9 && h.tele) badges.push(`<span class="list-badge list-badge-tele">Teletriage</span>`);
+      if (num === 11 && h.kakuho_psych) badges.push(`<span class="list-badge list-badge-psych" style="background:#F4F6F7;color:#616A6B">精神疾患のみ</span>`);
+      if (num === 11 && h.kakuho) badges.push(`<span class="list-badge" style="background:#1A2535;color:#fff">精神疾患以外</span>`);
+      if (badges.length > 0) html += `<div class="list-hospital-tags">${badges.join('')}</div>`;
+      html += `</div>`;
+    });
+  });
+
+  html += `</div>`;
+  const contentEl = document.getElementById('list-content');
+  contentEl.innerHTML = html;
+  contentEl.classList.add('fade-in');
+}
+</script>
+
+</body>
+</html>
